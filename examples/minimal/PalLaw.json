@@ -1,0 +1,20 @@
+{
+  "$schema": "../../site/pallaw/PalLaw.schema.json",
+  "version": 1,
+  "wilderness": {
+    "name": "Wilderness",
+    "mode": "pve"
+  },
+  "regions": [
+    {
+      "name": "Arena Island",
+      "mode": "pvp",
+      "polygon": [
+        [-240000, 90000],
+        [-210000, 125000],
+        [-160000, 100000],
+        [-180000, 55000]
+      ]
+    }
+  ]
+}

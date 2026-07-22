@@ -1,0 +1,130 @@
+{
+  "$schema": "../../site/pallaw/PalLaw.schema.json",
+  "version": 1,
+  "settings": {
+    "hotReload": true,
+    "hotReloadSeconds": 1.0,
+    "targetFiltering": true,
+    "targetSweepSeconds": 0.5,
+    "worldRules": true,
+    "adminBypass": true,
+    "playerSweepSeconds": 0.25,
+    "mountGraceSeconds": 15.0,
+    "debugLogging": false
+  },
+  "messages": {
+    "enabled": true,
+    "actionNames": {
+      "build": "Xây dựng",
+      "fly": "Bay",
+      "fastTravelArrival": "Điểm đến dịch chuyển"
+    },
+    "modeNames": {
+      "safe": "An toàn",
+      "pvp": "Đối kháng"
+    },
+    "regionChanged": {
+      "enabled": true,
+      "chat": {
+        "enabled": false,
+        "text": "Entered {region}."
+      },
+      "alerts": {
+        "activity": {
+          "enabled": true,
+          "text": "{region}"
+        }
+      }
+    },
+    "pvpWarning": {
+      "enabled": true,
+      "chat": {
+        "enabled": false,
+        "text": "Warning: PvP is enabled in {region}."
+      },
+      "alerts": {
+        "brief": {
+          "enabled": true,
+          "text": "PvP is active in {region}.",
+          "tone": "negative"
+        }
+      }
+    },
+    "actionDenied": {
+      "enabled": true,
+      "cooldownSeconds": 2.0,
+      "chat": {
+        "enabled": false,
+        "text": "{action} is not allowed in {region}."
+      },
+      "alerts": {
+        "brief": {
+          "enabled": true,
+          "text": "{action} is not allowed here.",
+          "tone": "negative"
+        }
+      }
+    },
+    "levelDenied": {
+      "enabled": true,
+      "cooldownSeconds": 3.0,
+      "chat": {
+        "enabled": false,
+        "text": "Level {minimumLevel} is required to enter {region}."
+      },
+      "alerts": {
+        "brief": {
+          "enabled": true,
+          "text": "Level {minimumLevel} required - {region}",
+          "tone": "negative"
+        }
+      }
+    }
+  },
+  "wilderness": {
+    "name": "Wilderness",
+    "mode": "pve"
+  },
+  "regions": [
+    {
+      "name": "Arena Island",
+      "enabled": true,
+      "mode": "pvp",
+      "minimumLevel": 20,
+      "map": "world",
+      "color": "#F43F5E",
+      "polygon": [
+        [-240000, 90000],
+        [-210000, 125000],
+        [-160000, 100000],
+        [-180000, 55000]
+      ],
+      "messages": {
+        "regionChanged": {
+          "chat": "Entered {region}. Combat between player groups is allowed."
+        }
+      }
+    },
+    {
+      "name": "Market Sanctuary",
+      "enabled": true,
+      "mode": "safe",
+      "map": "world",
+      "color": "#22C55E",
+      "polygon": [
+        [-70000, -20000],
+        [-35000, -20000],
+        [-35000, 15000],
+        [-70000, 15000]
+      ],
+      "actions": {
+        "build": false,
+        "dismantle": false,
+        "editSign": false,
+        "editLock": false,
+        "fastTravelDeparture": true,
+        "fastTravelArrival": false
+      }
+    }
+  ]
+}

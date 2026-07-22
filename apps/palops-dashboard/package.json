@@ -1,0 +1,11 @@
+{
+  "name": "@palworld-mods/palops-dashboard",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/server.ts",
+    "start": "bun src/server.ts",
+    "check": "bun test tests && bun build src/server.ts --outfile ../../../../out/palops-dashboard-server-check.js --target bun && bun build src/app.ts --outfile ../../../../out/palops-dashboard-app-check.js --target browser"
+  }
+}

@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'">
+  <title>PalOps Dashboard</title>
+  <link rel="stylesheet" href="/styles.css?v=3">
+</head>
+<body>
+  <a class="skip-link" href="#view">Skip to dashboard</a>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="PalOps dashboard home"><span>PalOps</span><b>/ Dashboard</b></a>
+      <div class="world-state"><span id="world-dot" class="state-dot"></span><div><strong id="world-label">Connecting</strong><small id="world-detail">Waiting for PalOps</small></div></div>
+      <div class="top-actions">
+        <span id="session-label" class="session-label">Public session</span>
+        <button id="login-button" class="button primary" type="button">Operator login</button>
+        <button id="theme-button" class="theme-button" type="button" aria-label="Use light theme">LT</button>
+      </div>
+    </header>
+
+    <aside class="sidebar">
+      <nav id="tabs" aria-label="Dashboard views">
+        <button class="nav-item active" data-view="leaderboards" type="button">Leaderboards</button>
+        <button class="nav-item" data-view="players" type="button">Players</button>
+        <button class="nav-item" data-view="operations" type="button">Operations</button>
+        <button class="nav-item" data-view="server" type="button">Server</button>
+        <button class="nav-item" data-view="configuration" type="button">Configuration</button>
+        <button class="nav-item" data-view="api" type="button">API</button>
+      </nav>
+      <div class="sidebar-note"><span>Contract</span><strong>PalOps v1</strong><small>41 explicit operations</small></div>
+    </aside>
+
+    <main id="view" tabindex="-1">
+      <header class="view-heading"><div><p id="view-kicker">World comparison</p><h1 id="view-title">Leaderboards</h1></div><button id="refresh-button" class="button" type="button">Refresh view</button></header>
+      <div id="notice" class="notice" hidden></div>
+      <section id="content" aria-live="polite"></section>
+    </main>
+  </div>
+
+  <dialog id="login-dialog">
+    <form id="login-form">
+      <div class="dialog-heading"><div><p>Operator session</p><h2>Use the server AdminPassword.</h2></div><button class="close-button" value="cancel" formmethod="dialog" type="button" aria-label="Close">×</button></div>
+      <p class="dialog-copy">The password stays in this Bun process for an absolute-lived session. Use HTTPS or a trusted VPN outside the server host.</p>
+      <label>AdminPassword<input id="password" type="password" autocomplete="current-password" maxlength="256" required></label>
+      <p id="login-error" class="error" hidden></p>
+      <div class="dialog-actions"><button id="cancel-login" class="button" type="button">Cancel</button><button class="button primary" type="submit">Start session</button></div>
+    </form>
+  </dialog>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

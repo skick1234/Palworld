@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Create, validate, and export named PalLaw regions and player messages.">
+  <meta name="color-scheme" content="dark light">
+  <meta name="theme-color" content="#0b0d0e">
+  <meta property="og:title" content="PalLaw Rules Studio">
+  <meta property="og:description" content="Build and validate regional Palworld server rules in your browser.">
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self' blob: data:; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' blob: data:; font-src https://fonts.gstatic.com; connect-src 'none'; frame-src https://ko-fi.com; object-src 'none'; base-uri 'self'; form-action 'none'">
+  <title>PalLaw Rules Studio</title>
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="../shared/theme.css?v=1">
+  <link rel="stylesheet" href="styles.css?v=1">
+</head>
+
+<body>
+  <a class="skip-link" href="#workspace">Skip to editor</a>
+  <div id="app" class="app-shell">
+    <header class="topbar">
+      <div class="topbar-main">
+        <div class="brand-block">
+          <div>
+            <div class="eyebrow">PalLaw</div>
+            <h1>Rules Studio</h1>
+          </div>
+        </div>
+
+        <div class="top-actions">
+          <button class="theme-toggle" type="button" data-theme-toggle aria-label="Change color theme">LT</button>
+          <a class="discord-link" href="https://discord.gg/zzhK54aaYz" target="_blank" rel="noreferrer">Discord</a>
+          <button class="support-trigger" type="button" data-support-trigger>Donate</button>
+          <button id="undoButton" class="icon-button" type="button" title="Undo" aria-label="Undo" disabled>↶</button>
+          <button id="redoButton" class="icon-button" type="button" title="Redo" aria-label="Redo" disabled>↷</button>
+          <button id="newButton" class="button ghost" type="button">New</button>
+          <button id="importButton" class="button ghost" type="button">Import</button>
+          <button id="exportButton" class="button primary" type="button" aria-label="Export PalLaw.json"><span class="export-label-full">Export PalLaw.json</span><span class="export-label-short">Export</span></button>
+        </div>
+      </div>
+
+      <nav class="section-nav" id="sectionNav" aria-label="Configuration sections">
+        <button type="button" class="section-tab active" data-section="regions">
+          <span>Regions</span>
+          <span id="regionCountBadge" class="count-badge">0</span>
+        </button>
+        <button type="button" class="section-tab" data-section="messages"><span>Messages</span></button>
+        <button type="button" class="section-tab" data-section="settings"><span>Runtime</span></button>
+        <button type="button" class="section-tab" data-section="json"><span>Raw JSON</span></button>
+      </nav>
+      <nav id="workspaceViewNav" class="workspace-view-nav" aria-label="Workspace view"></nav>
+    </header>
+
+    <main id="workspace" class="workspace" data-section="regions" data-view="list">
+      <aside class="navigation-panel" data-workspace-pane="list" aria-label="Configuration sections">
+        <section id="sidebarContent" class="sidebar-content"></section>
+
+      </aside>
+
+      <section class="map-panel" data-workspace-pane="map" aria-label="Region map editor">
+        <div class="map-core">
+          <div class="map-toolbar">
+            <div id="mapSwitcher" class="segmented" aria-label="Coordinate map"></div>
+            <p id="mapHelp" class="map-guide">Select a region to move or reshape it.</p>
+            <div class="map-toolbar-actions">
+              <button id="editShapeButton" class="button compact ghost" type="button" aria-pressed="false" disabled>Edit shape</button>
+              <button id="drawButton" class="button compact primary" type="button">Draw region</button>
+              <button id="finishDrawButton" class="button compact success hidden" type="button">Finish</button>
+              <button id="cancelDrawButton" class="button compact danger hidden" type="button">Cancel</button>
+              <button id="fitButton" class="button compact ghost" type="button">Fit</button>
+            </div>
+          </div>
+          <div id="map" class="map" tabindex="0" aria-label="Interactive coordinate map"></div>
+          <div id="drawHint" class="draw-hint hidden" aria-live="polite">
+            Click to add vertices. Double-click or choose Finish after at least three points. Press Escape to cancel.
+          </div>
+          <div class="map-footer">
+            <span id="coordinateReadout" class="mono">Map X - | Y -</span>
+            <a class="legal-link" href="../legal/">Unofficial | Map notice</a>
+          </div>
+        </div>
+      </section>
+
+      <aside class="inspector-panel" data-workspace-pane="edit" aria-label="Selected item editor">
+        <div class="inspector-core">
+          <div id="inspectorContent" class="inspector-content"></div>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <input id="importInput" type="file" accept="application/json,.json" hidden>
+  <div id="toastRegion" class="toast-region" aria-live="polite" aria-atomic="true"></div>
+
+  <dialog id="regionEditorDialog" class="region-editor-dialog" aria-labelledby="regionEditorTitle">
+    <div class="region-editor-shell">
+      <header class="region-editor-header">
+        <div>
+          <p id="areaEditorKind">Region settings</p>
+          <h2 id="regionEditorTitle">Region</h2>
+        </div>
+        <button id="regionEditorCloseButton" class="region-editor-close" type="button" aria-label="Close region settings">×</button>
+      </header>
+      <div id="regionEditorContent" class="region-editor-content"></div>
+      <footer class="region-editor-footer">
+        <p>Changes apply immediately and remain available in the undo history.</p>
+        <button id="regionEditorDoneButton" class="button primary" type="button">Done</button>
+      </footer>
+    </div>
+  </dialog>
+
+  <dialog id="confirmDialog" class="dialog">
+    <form method="dialog">
+      <h2 id="confirmTitle">Confirm</h2>
+      <p id="confirmMessage"></p>
+      <div class="dialog-actions">
+        <button value="cancel" class="button ghost">Cancel</button>
+        <button value="confirm" class="button danger">Confirm</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="vendor/leaflet-editable/Leaflet.Editable.js"></script>
+  <script type="module" src="../shared/theme.js?v=1"></script>
+  <script type="module" src="../shared/support.js?v=1"></script>
+  <script type="module" src="app.js?v=1"></script>
+</body>
+
+</html>

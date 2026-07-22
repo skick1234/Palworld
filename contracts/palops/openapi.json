@@ -1,0 +1,255 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "PalOps API",
+    "version": "1.1.0",
+    "description": "Server-owned API for one self-hosted Palworld dedicated server. Read models use resource paths; state changes create durable operations under domain-specific /ops namespaces."
+  },
+  "servers": [{ "url": "http://127.0.0.1:8222" }],
+  "security": [{ "AdminPassword": [] }, {}],
+  "paths": {
+    "/health": {
+      "get": { "operationId": "getHealth", "tags": ["discovery"], "security": [], "responses": { "200": { "$ref": "#/components/responses/Health" }, "503": { "$ref": "#/components/responses/Health" } } }
+    },
+    "/v1/capabilities": {
+      "get": { "operationId": "getCapabilities", "tags": ["discovery"], "security": [], "responses": { "200": { "$ref": "#/components/responses/Capabilities" } } }
+    },
+    "/v1/openapi.json": {
+      "get": {
+        "operationId": "getOpenApi",
+        "tags": ["discovery"],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The exact OpenAPI contract embedded in this build.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/OpenApiDocument" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/scoring-policy": {
+      "get": { "operationId": "getScoringPolicy", "tags": ["scoring"], "responses": { "200": { "$ref": "#/components/responses/ScoringPolicy" }, "503": { "$ref": "#/components/responses/Problem" } } }
+    },
+    "/v1/leaderboards/players": {
+      "get": { "operationId": "listPlayerLeaderboard", "tags": ["leaderboards"], "responses": { "200": { "$ref": "#/components/responses/PlayerLeaderboard" }, "503": { "$ref": "#/components/responses/Problem" } } }
+    },
+    "/v1/leaderboards/pals": {
+      "get": { "operationId": "listPalLeaderboard", "tags": ["leaderboards"], "responses": { "200": { "$ref": "#/components/responses/PalLeaderboard" }, "503": { "$ref": "#/components/responses/Problem" } } }
+    },
+    "/v1/leaderboards/guilds": {
+      "get": { "operationId": "listGuildLeaderboard", "tags": ["leaderboards"], "responses": { "200": { "$ref": "#/components/responses/GuildLeaderboard" }, "503": { "$ref": "#/components/responses/Problem" } } }
+    },
+    "/v1/players": {
+      "get": { "operationId": "listPlayers", "tags": ["players"], "responses": { "200": { "$ref": "#/components/responses/Players" }, "503": { "$ref": "#/components/responses/Problem" } } }
+    },
+    "/v1/players/online": {
+      "get": { "operationId": "listOnlinePlayers", "tags": ["players"], "responses": { "200": { "$ref": "#/components/responses/OnlinePlayers" }, "503": { "$ref": "#/components/responses/Problem" } } }
+    },
+    "/v1/players/{player_id}": {
+      "parameters": [{ "$ref": "#/components/parameters/PlayerId" }],
+      "get": { "operationId": "getPlayer", "tags": ["players"], "responses": { "200": { "$ref": "#/components/responses/PlayerDetail" }, "404": { "$ref": "#/components/responses/Problem" }, "503": { "$ref": "#/components/responses/Problem" } } }
+    },
+    "/v1/players/{player_id}/presence": {
+      "parameters": [{ "$ref": "#/components/parameters/PlayerId" }],
+      "get": { "operationId": "getPlayerPresence", "tags": ["players"], "responses": { "200": { "$ref": "#/components/responses/PlayerPresence" }, "404": { "$ref": "#/components/responses/Problem" }, "503": { "$ref": "#/components/responses/Problem" } } }
+    },
+    "/v1/world/map": {
+      "get": { "operationId": "getWorldMap", "tags": ["world"], "responses": { "200": { "$ref": "#/components/responses/WorldMap" }, "503": { "$ref": "#/components/responses/Problem" } } }
+    },
+    "/v1/guilds": {
+      "get": { "operationId": "listGuilds", "tags": ["guilds"], "responses": { "200": { "$ref": "#/components/responses/Guilds" }, "503": { "$ref": "#/components/responses/Problem" } } }
+    },
+    "/v1/guilds/{guild_id}": {
+      "parameters": [{ "$ref": "#/components/parameters/GuildId" }],
+      "get": { "operationId": "getGuild", "tags": ["guilds"], "responses": { "200": { "$ref": "#/components/responses/Guild" }, "404": { "$ref": "#/components/responses/Problem" }, "503": { "$ref": "#/components/responses/Problem" } } }
+    },
+    "/v1/bans": {
+      "get": { "operationId": "listBans", "tags": ["operations"], "responses": { "200": { "$ref": "#/components/responses/Bans" }, "503": { "$ref": "#/components/responses/Problem" } } }
+    },
+    "/v1/audit": {
+      "get": { "operationId": "listAudit", "tags": ["operations"], "responses": { "200": { "$ref": "#/components/responses/Audit" } } }
+    },
+    "/v1/ops": {
+      "get": { "operationId": "listOperations", "tags": ["operations"], "responses": { "200": { "$ref": "#/components/responses/Operations" } } }
+    },
+    "/v1/ops/{operation_id}": {
+      "parameters": [{ "$ref": "#/components/parameters/OperationId" }],
+      "get": { "operationId": "getOperation", "tags": ["operations"], "responses": { "200": { "$ref": "#/components/responses/Operation" }, "404": { "$ref": "#/components/responses/Problem" } } }
+    },
+    "/v1/server/status": {
+      "get": { "operationId": "getServerStatus", "tags": ["server"], "responses": { "200": { "$ref": "#/components/responses/ServerStatus" }, "503": { "$ref": "#/components/responses/Problem" } } }
+    },
+    "/v1/server/settings": {
+      "get": { "operationId": "getServerSettings", "tags": ["server"], "responses": { "200": { "$ref": "#/components/responses/ServerSettings" }, "503": { "$ref": "#/components/responses/Problem" } } }
+    },
+    "/v1/players/ops/kick": { "$ref": "#/components/pathItems/KickPlayer" },
+    "/v1/players/ops/ban": { "$ref": "#/components/pathItems/BanPlayer" },
+    "/v1/players/ops/unban": { "$ref": "#/components/pathItems/UnbanPlayer" },
+    "/v1/players/ops/message": { "$ref": "#/components/pathItems/MessagePlayer" },
+    "/v1/players/ops/give-items": { "$ref": "#/components/pathItems/GivePlayerItems" },
+    "/v1/players/ops/give-pals": { "$ref": "#/components/pathItems/GivePlayerPals" },
+    "/v1/players/ops/give-pal-eggs": { "$ref": "#/components/pathItems/GivePlayerPalEggs" },
+    "/v1/players/ops/give-experience": { "$ref": "#/components/pathItems/GivePlayerExperience" },
+    "/v1/players/ops/give-status-points": { "$ref": "#/components/pathItems/GivePlayerStatusPoints" },
+    "/v1/players/ops/give-relics": { "$ref": "#/components/pathItems/GivePlayerRelics" },
+    "/v1/players/ops/give-technology-points": { "$ref": "#/components/pathItems/GivePlayerTechnologyPoints" },
+    "/v1/players/ops/give-ancient-technology-points": { "$ref": "#/components/pathItems/GivePlayerAncientTechnologyPoints" },
+    "/v1/players/ops/learn-technologies": { "$ref": "#/components/pathItems/LearnPlayerTechnologies" },
+    "/v1/players/ops/forget-technologies": { "$ref": "#/components/pathItems/ForgetPlayerTechnologies" },
+    "/v1/server/ops/broadcast": { "$ref": "#/components/pathItems/BroadcastServerChat" },
+    "/v1/server/ops/alert": { "$ref": "#/components/pathItems/AlertServerPlayers" },
+    "/v1/server/ops/save": { "$ref": "#/components/pathItems/SaveServerWorld" },
+    "/v1/server/ops/shutdown": { "$ref": "#/components/pathItems/ShutdownServer" },
+    "/v1/config": {
+      "get": { "operationId": "getConfig", "tags": ["configuration"], "security": [{ "AdminPassword": [] }], "responses": { "200": { "$ref": "#/components/responses/Config" }, "default": { "$ref": "#/components/responses/Problem" } } },
+      "put": { "operationId": "updateConfig", "tags": ["configuration"], "security": [{ "AdminPassword": [] }], "parameters": [{ "$ref": "#/components/parameters/IfMatch" }], "requestBody": { "$ref": "#/components/requestBodies/Config" }, "responses": { "200": { "$ref": "#/components/responses/ConfigUpdate" }, "default": { "$ref": "#/components/responses/Problem" } } }
+    },
+    "/v1/config/validate": {
+      "post": { "operationId": "validateConfig", "tags": ["configuration"], "security": [{ "AdminPassword": [] }], "requestBody": { "$ref": "#/components/requestBodies/Config" }, "responses": { "200": { "$ref": "#/components/responses/ConfigValidation" }, "default": { "$ref": "#/components/responses/Problem" } } }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "AdminPassword": { "type": "http", "scheme": "basic", "description": "Username admin and the current Palworld AdminPassword." }
+    },
+    "parameters": {
+      "PlayerId": { "name": "player_id", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/OpaqueId" } },
+      "GuildId": { "name": "guild_id", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/OpaqueId" } },
+      "OperationId": { "name": "operation_id", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/OpaqueId" } },
+      "IdempotencyKey": { "name": "Idempotency-Key", "in": "header", "required": true, "schema": { "type": "string", "minLength": 8, "maxLength": 128 } },
+      "IfMatch": { "name": "If-Match", "in": "header", "required": true, "schema": { "type": "string", "minLength": 3, "maxLength": 128 } }
+    },
+    "pathItems": {
+      "KickPlayer": { "post": { "operationId": "kickPlayer", "tags": ["player operations"], "security": [{ "AdminPassword": [] }], "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }], "requestBody": { "$ref": "#/components/requestBodies/PlayerReason" }, "responses": { "202": { "$ref": "#/components/responses/Operation" }, "default": { "$ref": "#/components/responses/Problem" } } } },
+      "BanPlayer": { "post": { "operationId": "banPlayer", "tags": ["player operations"], "security": [{ "AdminPassword": [] }], "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }], "requestBody": { "$ref": "#/components/requestBodies/Ban" }, "responses": { "202": { "$ref": "#/components/responses/Operation" }, "default": { "$ref": "#/components/responses/Problem" } } } },
+      "UnbanPlayer": { "post": { "operationId": "unbanPlayer", "tags": ["player operations"], "security": [{ "AdminPassword": [] }], "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }], "requestBody": { "$ref": "#/components/requestBodies/PlayerTarget" }, "responses": { "202": { "$ref": "#/components/responses/Operation" }, "default": { "$ref": "#/components/responses/Problem" } } } },
+      "MessagePlayer": { "post": { "operationId": "messagePlayer", "tags": ["player operations"], "security": [{ "AdminPassword": [] }], "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }], "requestBody": { "$ref": "#/components/requestBodies/PlayerMessage" }, "responses": { "202": { "$ref": "#/components/responses/Operation" }, "default": { "$ref": "#/components/responses/Problem" } } } },
+      "GivePlayerItems": { "post": { "operationId": "givePlayerItems", "tags": ["player operations"], "security": [{ "AdminPassword": [] }], "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }], "requestBody": { "$ref": "#/components/requestBodies/ItemGrant" }, "responses": { "202": { "$ref": "#/components/responses/Operation" }, "default": { "$ref": "#/components/responses/Problem" } } } },
+      "GivePlayerPals": { "post": { "operationId": "givePlayerPals", "tags": ["player operations"], "security": [{ "AdminPassword": [] }], "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }], "requestBody": { "$ref": "#/components/requestBodies/PalGrant" }, "responses": { "202": { "$ref": "#/components/responses/Operation" }, "default": { "$ref": "#/components/responses/Problem" } } } },
+      "GivePlayerPalEggs": { "post": { "operationId": "givePlayerPalEggs", "tags": ["player operations"], "security": [{ "AdminPassword": [] }], "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }], "requestBody": { "$ref": "#/components/requestBodies/PalEggGrant" }, "responses": { "202": { "$ref": "#/components/responses/Operation" }, "default": { "$ref": "#/components/responses/Problem" } } } },
+      "GivePlayerExperience": { "post": { "operationId": "givePlayerExperience", "tags": ["player operations"], "security": [{ "AdminPassword": [] }], "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }], "requestBody": { "$ref": "#/components/requestBodies/AmountGrant" }, "responses": { "202": { "$ref": "#/components/responses/Operation" }, "default": { "$ref": "#/components/responses/Problem" } } } },
+      "GivePlayerStatusPoints": { "post": { "operationId": "givePlayerStatusPoints", "tags": ["player operations"], "security": [{ "AdminPassword": [] }], "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }], "requestBody": { "$ref": "#/components/requestBodies/SignedAmountGrant" }, "responses": { "202": { "$ref": "#/components/responses/Operation" }, "default": { "$ref": "#/components/responses/Problem" } } } },
+      "GivePlayerRelics": { "post": { "operationId": "givePlayerRelics", "tags": ["player operations"], "security": [{ "AdminPassword": [] }], "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }], "requestBody": { "$ref": "#/components/requestBodies/RelicGrant" }, "responses": { "202": { "$ref": "#/components/responses/Operation" }, "default": { "$ref": "#/components/responses/Problem" } } } },
+      "GivePlayerTechnologyPoints": { "post": { "operationId": "givePlayerTechnologyPoints", "tags": ["player operations"], "security": [{ "AdminPassword": [] }], "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }], "requestBody": { "$ref": "#/components/requestBodies/SignedAmountGrant" }, "responses": { "202": { "$ref": "#/components/responses/Operation" }, "default": { "$ref": "#/components/responses/Problem" } } } },
+      "GivePlayerAncientTechnologyPoints": { "post": { "operationId": "givePlayerAncientTechnologyPoints", "tags": ["player operations"], "security": [{ "AdminPassword": [] }], "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }], "requestBody": { "$ref": "#/components/requestBodies/SignedAmountGrant" }, "responses": { "202": { "$ref": "#/components/responses/Operation" }, "default": { "$ref": "#/components/responses/Problem" } } } },
+      "LearnPlayerTechnologies": { "post": { "operationId": "learnPlayerTechnologies", "tags": ["player operations"], "security": [{ "AdminPassword": [] }], "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }], "requestBody": { "$ref": "#/components/requestBodies/TechnologyChange" }, "responses": { "202": { "$ref": "#/components/responses/Operation" }, "default": { "$ref": "#/components/responses/Problem" } } } },
+      "ForgetPlayerTechnologies": { "post": { "operationId": "forgetPlayerTechnologies", "tags": ["player operations"], "security": [{ "AdminPassword": [] }], "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }], "requestBody": { "$ref": "#/components/requestBodies/TechnologyChange" }, "responses": { "202": { "$ref": "#/components/responses/Operation" }, "default": { "$ref": "#/components/responses/Problem" } } } },
+      "BroadcastServerChat": { "post": { "operationId": "broadcastServerChat", "tags": ["server operations"], "security": [{ "AdminPassword": [] }], "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }], "requestBody": { "$ref": "#/components/requestBodies/Message" }, "responses": { "202": { "$ref": "#/components/responses/Operation" }, "default": { "$ref": "#/components/responses/Problem" } } } },
+      "AlertServerPlayers": { "post": { "operationId": "alertServerPlayers", "tags": ["server operations"], "security": [{ "AdminPassword": [] }], "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }], "requestBody": { "$ref": "#/components/requestBodies/Message" }, "responses": { "202": { "$ref": "#/components/responses/Operation" }, "default": { "$ref": "#/components/responses/Problem" } } } },
+      "SaveServerWorld": { "post": { "operationId": "saveServerWorld", "tags": ["server operations"], "security": [{ "AdminPassword": [] }], "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }], "responses": { "202": { "$ref": "#/components/responses/Operation" }, "default": { "$ref": "#/components/responses/Problem" } } } },
+      "ShutdownServer": { "post": { "operationId": "shutdownServer", "tags": ["server operations"], "security": [{ "AdminPassword": [] }], "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }], "requestBody": { "$ref": "#/components/requestBodies/Shutdown" }, "responses": { "202": { "$ref": "#/components/responses/Operation" }, "default": { "$ref": "#/components/responses/Problem" } } } }
+    },
+    "requestBodies": {
+      "PlayerTarget": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlayerOperationRequest" } } } },
+      "PlayerReason": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlayerReasonOperationRequest" } } } },
+      "Ban": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BanOperationRequest" } } } },
+      "PlayerMessage": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlayerMessageOperationRequest" } } } },
+      "ItemGrant": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ItemGrantOperationRequest" } } } },
+      "PalGrant": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PalGrantOperationRequest" } } } },
+      "PalEggGrant": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PalEggGrantOperationRequest" } } } },
+      "AmountGrant": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AmountGrantOperationRequest" } } } },
+      "SignedAmountGrant": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SignedAmountGrantOperationRequest" } } } },
+      "RelicGrant": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RelicGrantOperationRequest" } } } },
+      "TechnologyChange": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TechnologyChangeOperationRequest" } } } },
+      "Message": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MessageOperationRequest" } } } },
+      "Shutdown": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ShutdownOperationRequest" } } } },
+      "Config": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PalOpsConfig" } } } }
+    },
+    "responses": {
+      "Problem": { "description": "Stable problem details.", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+      "Health": { "description": "Readiness state.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Health" } } } },
+      "Capabilities": { "description": "Effective Endpoint Access.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Capabilities" } } } },
+      "ScoringPolicy": { "description": "Active scoring policy.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ScoringPolicy" } } } },
+      "PlayerLeaderboard": { "description": "Player ranking inputs.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlayerLeaderboard" } } } },
+      "PalLeaderboard": { "description": "Party Pal ranking inputs.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PalLeaderboard" } } } },
+      "GuildLeaderboard": { "description": "Guild ranking inputs.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GuildLeaderboard" } } } },
+      "Players": { "description": "Compact Player Summaries.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlayerSummaryCollection" } } } },
+      "PlayerDetail": { "description": "One detailed player projection.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlayerDetail" } } } },
+      "PlayerPresence": { "description": "Live administrative player state.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlayerPresence" } } } },
+      "OnlinePlayers": { "description": "Current online players.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlayerPresenceCollection" } } } },
+      "WorldMap": { "description": "Current online map.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorldMap" } } } },
+      "Guilds": { "description": "Guild summaries.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GuildCollection" } } } },
+      "Guild": { "description": "One guild.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Guild" } } } },
+      "Bans": { "description": "Ban records.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BanCollection" } } } },
+      "Audit": { "description": "Audit records.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AuditCollection" } } } },
+      "Operations": { "description": "Durable operations.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OperatorOperationCollection" } } } },
+      "Operation": { "description": "One durable operation.", "headers": { "Location": { "schema": { "type": "string" } } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OperatorOperation" } } } },
+      "ServerStatus": { "description": "Runtime status.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ServerStatus" } } } },
+      "ServerSettings": { "description": "Effective server settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ServerSettings" } } } },
+      "Config": { "description": "Canonical palops.json.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PalOpsConfig" } } } },
+      "ConfigUpdate": { "description": "Accepted configuration revision.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ConfigUpdate" } } } },
+      "ConfigValidation": { "description": "Configuration validation result.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ConfigValidation" } } } }
+    },
+    "schemas": {
+      "OpaqueId": { "type": "string", "minLength": 1, "maxLength": 96 },
+      "UtcTimestamp": { "type": "string", "format": "date-time" },
+      "OpenApiDocument": { "type": "object", "additionalProperties": true },
+      "Problem": { "type": "object", "additionalProperties": false, "required": ["type", "title", "status", "code", "detail", "correlation_id"], "properties": { "type": { "type": "string" }, "title": { "type": "string" }, "status": { "type": "integer" }, "code": { "type": "string" }, "detail": { "type": "string" }, "correlation_id": { "type": "string" }, "violations": { "type": "array", "items": { "$ref": "#/components/schemas/Violation" } } } },
+      "Violation": { "type": "object", "additionalProperties": false, "required": ["field", "code"], "properties": { "field": { "type": "string" }, "code": { "type": "string" }, "message": { "type": ["string", "null"] } } },
+      "Health": { "type": "object", "additionalProperties": false, "required": ["status", "ready", "config_revision", "restart_required"], "properties": { "status": { "type": "string", "enum": ["ready", "degraded", "not_ready"] }, "ready": { "type": "boolean" }, "config_revision": { "type": "string" }, "restart_required": { "type": "boolean" }, "config_reload_error": { "type": ["string", "null"] } } },
+      "EndpointCapability": { "type": "object", "additionalProperties": false, "required": ["mode", "allowed_modes", "fixed"], "properties": { "mode": { "$ref": "#/components/schemas/EndpointAccessMode" }, "allowed_modes": { "type": "array", "items": { "$ref": "#/components/schemas/EndpointAccessMode" } }, "fixed": { "type": "boolean" } } },
+      "EndpointAccessMode": { "type": "string", "enum": ["public", "operator", "disabled"] },
+      "Capabilities": { "type": "object", "additionalProperties": false, "required": ["endpoints"], "properties": { "endpoints": { "type": "object", "additionalProperties": { "$ref": "#/components/schemas/EndpointCapability" } } } },
+      "MetricObservation": { "type": "object", "additionalProperties": false, "required": ["value", "source", "observed_at", "complete"], "properties": { "value": { "type": "integer" }, "source": { "type": "string" }, "observed_at": { "$ref": "#/components/schemas/UtcTimestamp" }, "complete": { "type": "boolean" } } },
+      "Score": { "type": "object", "additionalProperties": false, "required": ["value", "formula", "policy_version", "observed_at", "complete"], "properties": { "value": { "type": "number" }, "formula": { "type": "string" }, "policy_version": { "type": ["integer", "null"] }, "observed_at": { "$ref": "#/components/schemas/UtcTimestamp" }, "complete": { "type": "boolean" } } },
+      "PlayerStatistics": { "type": "object", "additionalProperties": false, "required": ["experience", "boss_defeats", "pal_captures", "fishing"], "properties": { "experience": { "$ref": "#/components/schemas/MetricObservation" }, "boss_defeats": { "$ref": "#/components/schemas/MetricObservation" }, "pal_captures": { "$ref": "#/components/schemas/MetricObservation" }, "fishing": { "$ref": "#/components/schemas/MetricObservation" } } },
+      "PlayerCounts": { "type": "object", "additionalProperties": false, "required": ["owned_pals", "party_pals", "inventory_items", "unlocked_technologies"], "properties": { "owned_pals": { "type": "integer", "minimum": 0 }, "party_pals": { "type": "integer", "minimum": 0, "maximum": 5 }, "inventory_items": { "type": "integer", "minimum": 0 }, "unlocked_technologies": { "type": "integer", "minimum": 0 } } },
+      "PlayerScores": { "type": "object", "additionalProperties": false, "required": ["team_firepower", "team_combat_power"], "properties": { "team_firepower": { "$ref": "#/components/schemas/Score" }, "team_combat_power": { "$ref": "#/components/schemas/Score" } } },
+      "PlayerSummary": { "type": "object", "additionalProperties": false, "required": ["id", "display_name", "guild_id", "guild_name", "level", "statistics", "counts", "scores", "observed_at", "stale", "complete"], "properties": { "id": { "$ref": "#/components/schemas/OpaqueId" }, "display_name": { "type": "string", "maxLength": 64 }, "guild_id": { "oneOf": [{ "$ref": "#/components/schemas/OpaqueId" }, { "type": "null" }] }, "guild_name": { "type": ["string", "null"], "maxLength": 64 }, "level": { "type": "integer", "minimum": 1 }, "statistics": { "$ref": "#/components/schemas/PlayerStatistics" }, "counts": { "$ref": "#/components/schemas/PlayerCounts" }, "scores": { "$ref": "#/components/schemas/PlayerScores" }, "observed_at": { "$ref": "#/components/schemas/UtcTimestamp" }, "stale": { "type": "boolean" }, "complete": { "type": "boolean" } } },
+      "PassiveContribution": { "type": "object", "additionalProperties": false, "required": ["effect_type", "effect_value", "weight", "points"], "properties": { "effect_type": { "type": "string" }, "effect_value": { "type": "number" }, "weight": { "type": "number" }, "points": { "type": "number" } } },
+      "PartyPal": { "type": "object", "additionalProperties": false, "required": ["id", "species", "display_name", "level", "condenser_rank", "max_hp", "shot_attack", "defense", "passives", "firepower", "combat_power", "observed_at", "stale"], "properties": { "id": { "$ref": "#/components/schemas/OpaqueId" }, "species": { "type": "string", "maxLength": 96 }, "display_name": { "type": "string", "maxLength": 64 }, "level": { "type": "integer", "minimum": 1 }, "condenser_rank": { "type": "integer", "minimum": 0, "maximum": 4 }, "max_hp": { "type": "integer", "minimum": 0 }, "shot_attack": { "type": "integer", "minimum": 0 }, "defense": { "type": "integer", "minimum": 0 }, "passives": { "type": "array", "maxItems": 32, "items": { "$ref": "#/components/schemas/PassiveContribution" } }, "firepower": { "$ref": "#/components/schemas/Score" }, "combat_power": { "$ref": "#/components/schemas/Score" }, "observed_at": { "$ref": "#/components/schemas/UtcTimestamp" }, "stale": { "type": "boolean" } } },
+      "PlayerDetail": { "type": "object", "additionalProperties": false, "required": ["id", "display_name", "guild_id", "guild_name", "level", "statistics", "counts", "scores", "relic_counts", "party_pals", "observed_at", "stale", "complete"], "properties": { "id": { "$ref": "#/components/schemas/OpaqueId" }, "display_name": { "type": "string", "maxLength": 64 }, "guild_id": { "oneOf": [{ "$ref": "#/components/schemas/OpaqueId" }, { "type": "null" }] }, "guild_name": { "type": ["string", "null"], "maxLength": 64 }, "level": { "type": "integer", "minimum": 1 }, "statistics": { "$ref": "#/components/schemas/PlayerStatistics" }, "counts": { "$ref": "#/components/schemas/PlayerCounts" }, "scores": { "$ref": "#/components/schemas/PlayerScores" }, "relic_counts": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } }, "party_pals": { "type": "array", "maxItems": 5, "items": { "$ref": "#/components/schemas/PartyPal" } }, "observed_at": { "$ref": "#/components/schemas/UtcTimestamp" }, "stale": { "type": "boolean" }, "complete": { "type": "boolean" } } },
+      "Position": { "type": "object", "additionalProperties": false, "required": ["x", "y", "z"], "properties": { "x": { "type": "number" }, "y": { "type": "number" }, "z": { "type": "number" } } },
+      "PlayerPresence": { "type": "object", "additionalProperties": false, "required": ["player_id", "display_name", "platform_id", "online", "position", "health", "banned", "observed_at"], "properties": { "player_id": { "$ref": "#/components/schemas/OpaqueId" }, "display_name": { "type": "string" }, "platform_id": { "type": ["string", "null"] }, "online": { "type": "boolean" }, "position": { "oneOf": [{ "$ref": "#/components/schemas/Position" }, { "type": "null" }] }, "health": { "type": ["integer", "null"] }, "banned": { "type": ["boolean", "null"] }, "observed_at": { "$ref": "#/components/schemas/UtcTimestamp" } } },
+      "PlayerLeaderboardEntry": { "type": "object", "additionalProperties": false, "required": ["player_id", "display_name", "guild_name", "level", "team_firepower", "team_combat_power", "observed_at", "complete"], "properties": { "player_id": { "$ref": "#/components/schemas/OpaqueId" }, "display_name": { "type": "string" }, "guild_name": { "type": ["string", "null"] }, "level": { "type": "integer" }, "team_firepower": { "$ref": "#/components/schemas/Score" }, "team_combat_power": { "$ref": "#/components/schemas/Score" }, "observed_at": { "$ref": "#/components/schemas/UtcTimestamp" }, "complete": { "type": "boolean" } } },
+      "PalLeaderboardEntry": { "type": "object", "additionalProperties": false, "required": ["pal_id", "owner_player_id", "owner_display_name", "species", "display_name", "level", "firepower", "combat_power", "observed_at"], "properties": { "pal_id": { "$ref": "#/components/schemas/OpaqueId" }, "owner_player_id": { "$ref": "#/components/schemas/OpaqueId" }, "owner_display_name": { "type": "string" }, "species": { "type": "string" }, "display_name": { "type": "string" }, "level": { "type": "integer" }, "firepower": { "$ref": "#/components/schemas/Score" }, "combat_power": { "$ref": "#/components/schemas/Score" }, "observed_at": { "$ref": "#/components/schemas/UtcTimestamp" } } },
+      "Guild": { "type": "object", "additionalProperties": false, "required": ["id", "name", "member_count", "contributing_member_count", "firepower", "combat_power", "observed_at", "complete"], "properties": { "id": { "$ref": "#/components/schemas/OpaqueId" }, "name": { "type": "string" }, "member_count": { "type": "integer" }, "contributing_member_count": { "type": "integer" }, "firepower": { "$ref": "#/components/schemas/Score" }, "combat_power": { "$ref": "#/components/schemas/Score" }, "observed_at": { "$ref": "#/components/schemas/UtcTimestamp" }, "complete": { "type": "boolean" } } },
+      "GuildLeaderboardEntry": { "type": "object", "additionalProperties": false, "required": ["guild_id", "name", "member_count", "firepower", "combat_power", "observed_at", "complete"], "properties": { "guild_id": { "$ref": "#/components/schemas/OpaqueId" }, "name": { "type": "string" }, "member_count": { "type": "integer" }, "firepower": { "$ref": "#/components/schemas/Score" }, "combat_power": { "$ref": "#/components/schemas/Score" }, "observed_at": { "$ref": "#/components/schemas/UtcTimestamp" }, "complete": { "type": "boolean" } } },
+      "WorldMap": { "type": "object", "additionalProperties": false, "required": ["revision", "players", "observed_at"], "properties": { "revision": { "type": "integer" }, "players": { "$ref": "#/components/schemas/PlayerPresenceCollection" }, "observed_at": { "$ref": "#/components/schemas/UtcTimestamp" } } },
+      "Ban": { "type": "object", "additionalProperties": false, "required": ["player_id", "display_name", "platform_id", "reason", "created_at", "expires_at"], "properties": { "player_id": { "$ref": "#/components/schemas/OpaqueId" }, "display_name": { "type": "string" }, "platform_id": { "type": ["string", "null"] }, "reason": { "type": ["string", "null"] }, "created_at": { "oneOf": [{ "$ref": "#/components/schemas/UtcTimestamp" }, { "type": "null" }] }, "expires_at": { "type": ["string", "null"], "format": "date-time" } } },
+      "AuditRecord": { "type": "object", "additionalProperties": false, "required": ["id", "operation_id", "operation_type", "target_id", "outcome", "correlation_id", "created_at"], "properties": { "id": { "$ref": "#/components/schemas/OpaqueId" }, "operation_id": { "oneOf": [{ "$ref": "#/components/schemas/OpaqueId" }, { "type": "null" }] }, "operation_type": { "type": "string" }, "target_id": { "type": ["string", "null"] }, "outcome": { "type": "string" }, "correlation_id": { "type": "string" }, "created_at": { "$ref": "#/components/schemas/UtcTimestamp" } } },
+      "OperationEntryResult": { "type": "object", "additionalProperties": false, "required": ["index", "status", "code", "message"], "properties": { "index": { "type": "integer", "minimum": 0 }, "status": { "type": "string", "enum": ["completed", "partially_completed", "failed"] }, "code": { "type": ["string", "null"] }, "message": { "type": ["string", "null"] }, "requested_quantity": { "type": "integer", "minimum": 1 }, "applied_quantity": { "type": "integer", "minimum": 0 } } },
+      "OperatorOperation": { "type": "object", "additionalProperties": false, "required": ["id", "type", "status", "target_id", "idempotency_key", "request_hash", "created_at", "updated_at", "message", "results"], "properties": { "id": { "$ref": "#/components/schemas/OpaqueId" }, "type": { "type": "string" }, "status": { "type": "string", "enum": ["accepted", "running", "completed", "partially_completed", "failed"] }, "target_id": { "type": ["string", "null"] }, "idempotency_key": { "type": "string" }, "request_hash": { "type": "string" }, "created_at": { "$ref": "#/components/schemas/UtcTimestamp" }, "updated_at": { "$ref": "#/components/schemas/UtcTimestamp" }, "message": { "type": ["string", "null"] }, "results": { "type": "array", "items": { "$ref": "#/components/schemas/OperationEntryResult" } } } },
+      "ServerStatus": { "type": "object", "additionalProperties": false, "required": ["ready", "world_id", "world_label", "player_count", "online_player_count", "snapshot_revision", "snapshot_observed_at", "command_queue_depth", "warnings"], "properties": { "ready": { "type": "boolean" }, "world_id": { "type": ["string", "null"] }, "world_label": { "type": ["string", "null"] }, "player_count": { "type": "integer" }, "online_player_count": { "type": "integer" }, "snapshot_revision": { "type": "integer" }, "snapshot_observed_at": { "oneOf": [{ "$ref": "#/components/schemas/UtcTimestamp" }, { "type": "null" }] }, "command_queue_depth": { "type": "integer" }, "warnings": { "type": "array", "items": { "type": "string" } } } },
+      "ServerSettings": { "type": "object", "additionalProperties": false, "required": ["server_name", "description", "max_players", "public_port", "pvp_enabled"], "properties": { "server_name": { "type": "string" }, "description": { "type": "string" }, "max_players": { "type": "integer" }, "public_port": { "type": "integer" }, "pvp_enabled": { "type": "boolean" } } },
+      "ScoringPolicy": { "type": "object", "additionalProperties": false, "required": ["policy_version", "firepower_formula", "combat_power_formula", "weights", "warnings"], "properties": { "policy_version": { "type": "integer" }, "firepower_formula": { "type": "string" }, "combat_power_formula": { "type": "string" }, "weights": { "type": "object", "additionalProperties": { "type": "number" } }, "warnings": { "type": "array", "items": { "type": "string" } } } },
+      "PlayerOperationRequest": { "type": "object", "additionalProperties": false, "required": ["player_id"], "properties": { "player_id": { "$ref": "#/components/schemas/OpaqueId" } } },
+      "PlayerReasonOperationRequest": { "type": "object", "additionalProperties": false, "required": ["player_id"], "properties": { "player_id": { "$ref": "#/components/schemas/OpaqueId" }, "reason": { "type": "string", "maxLength": 256 } } },
+      "BanOperationRequest": { "type": "object", "additionalProperties": false, "required": ["player_id"], "properties": { "player_id": { "$ref": "#/components/schemas/OpaqueId" }, "reason": { "type": "string", "maxLength": 256 } } },
+      "PlayerMessageOperationRequest": { "type": "object", "additionalProperties": false, "required": ["player_id", "message"], "properties": { "player_id": { "$ref": "#/components/schemas/OpaqueId" }, "message": { "type": "string", "minLength": 1, "maxLength": 256 } } },
+      "ItemGrantEntry": { "type": "object", "additionalProperties": false, "required": ["item_id", "quantity"], "properties": { "item_id": { "type": "string", "minLength": 1, "maxLength": 96 }, "quantity": { "type": "integer", "minimum": 1, "maximum": 1000000 } } },
+      "ItemGrantOperationRequest": { "type": "object", "additionalProperties": false, "required": ["player_id", "items"], "properties": { "player_id": { "$ref": "#/components/schemas/OpaqueId" }, "items": { "type": "array", "minItems": 1, "maxItems": 64, "items": { "$ref": "#/components/schemas/ItemGrantEntry" } } } },
+      "PalGrantEntry": { "type": "object", "additionalProperties": false, "required": ["pal_id", "level", "quantity"], "properties": { "pal_id": { "type": "string", "minLength": 1, "maxLength": 96 }, "level": { "type": "integer", "minimum": 1, "maximum": 100 }, "quantity": { "type": "integer", "minimum": 1, "maximum": 64 } } },
+      "PalGrantOperationRequest": { "type": "object", "additionalProperties": false, "required": ["player_id", "pals"], "properties": { "player_id": { "$ref": "#/components/schemas/OpaqueId" }, "pals": { "type": "array", "minItems": 1, "maxItems": 32, "items": { "$ref": "#/components/schemas/PalGrantEntry" } } } },
+      "PalEggGrantEntry": { "type": "object", "additionalProperties": false, "required": ["pal_id", "quantity"], "properties": { "pal_id": { "type": "string", "minLength": 1, "maxLength": 96 }, "quantity": { "type": "integer", "minimum": 1, "maximum": 64 } } },
+      "PalEggGrantOperationRequest": { "type": "object", "additionalProperties": false, "required": ["player_id", "eggs"], "properties": { "player_id": { "$ref": "#/components/schemas/OpaqueId" }, "eggs": { "type": "array", "minItems": 1, "maxItems": 32, "items": { "$ref": "#/components/schemas/PalEggGrantEntry" } } } },
+      "AmountGrantOperationRequest": { "type": "object", "additionalProperties": false, "required": ["player_id", "amount"], "properties": { "player_id": { "$ref": "#/components/schemas/OpaqueId" }, "amount": { "type": "integer", "minimum": 1, "maximum": 2147483647 } } },
+      "SignedAmountGrantOperationRequest": { "type": "object", "additionalProperties": false, "required": ["player_id", "amount"], "properties": { "player_id": { "$ref": "#/components/schemas/OpaqueId" }, "amount": { "type": "integer", "minimum": -1000000, "maximum": 1000000 } } },
+      "RelicGrantEntry": { "type": "object", "additionalProperties": false, "required": ["relic_type", "amount"], "properties": { "relic_type": { "type": "string", "minLength": 1, "maxLength": 96 }, "amount": { "type": "integer", "minimum": 1, "maximum": 1000000 } } },
+      "RelicGrantOperationRequest": { "type": "object", "additionalProperties": false, "required": ["player_id", "relics"], "properties": { "player_id": { "$ref": "#/components/schemas/OpaqueId" }, "relics": { "type": "array", "minItems": 1, "maxItems": 32, "items": { "$ref": "#/components/schemas/RelicGrantEntry" } } } },
+      "TechnologyChangeOperationRequest": { "type": "object", "additionalProperties": false, "required": ["player_id", "technology_ids"], "properties": { "player_id": { "$ref": "#/components/schemas/OpaqueId" }, "technology_ids": { "type": "array", "minItems": 1, "maxItems": 128, "items": { "type": "string", "minLength": 1, "maxLength": 96 } } } },
+      "MessageOperationRequest": { "type": "object", "additionalProperties": false, "required": ["message"], "properties": { "message": { "type": "string", "minLength": 1, "maxLength": 256 } } },
+      "ShutdownOperationRequest": { "type": "object", "additionalProperties": false, "required": ["delay_seconds", "message"], "properties": { "delay_seconds": { "type": "integer", "minimum": 0, "maximum": 3600 }, "message": { "type": "string", "minLength": 1, "maxLength": 256 } } },
+      "ListenConfig": { "type": "object", "additionalProperties": false, "required": ["host", "port"], "properties": { "host": { "type": "string", "minLength": 1, "maxLength": 255 }, "port": { "type": "integer", "minimum": 1, "maximum": 65535 } } },
+      "StorageConfig": { "type": "object", "additionalProperties": false, "required": ["active_database", "archive_directory"], "properties": { "active_database": { "type": "string", "minLength": 1 }, "archive_directory": { "type": "string", "minLength": 1 } } },
+      "HttpConfig": { "type": "object", "additionalProperties": false, "required": ["worker_count", "queue_capacity", "maximum_body_bytes"], "properties": { "worker_count": { "type": "integer", "minimum": 1, "maximum": 64 }, "queue_capacity": { "type": "integer", "minimum": 1, "maximum": 4096 }, "maximum_body_bytes": { "type": "integer", "minimum": 256, "maximum": 1048576 } } },
+      "CombatPowerConfig": { "type": "object", "additionalProperties": false, "required": ["policy_version", "weights"], "properties": { "policy_version": { "type": "integer", "const": 1 }, "weights": { "type": "object", "additionalProperties": { "type": "number", "minimum": -10000, "maximum": 10000 } } } },
+      "PalOpsConfig": { "type": "object", "additionalProperties": false, "required": ["version", "listen", "storage", "http", "endpoints", "combat_power"], "properties": { "version": { "type": "integer", "const": 1 }, "listen": { "$ref": "#/components/schemas/ListenConfig" }, "storage": { "$ref": "#/components/schemas/StorageConfig" }, "http": { "$ref": "#/components/schemas/HttpConfig" }, "endpoints": { "type": "object", "additionalProperties": { "$ref": "#/components/schemas/EndpointAccessMode" } }, "combat_power": { "$ref": "#/components/schemas/CombatPowerConfig" } } },
+      "ConfigUpdate": { "type": "object", "additionalProperties": false, "required": ["revision", "applied", "restart_required", "audit_recorded"], "properties": { "revision": { "type": "string" }, "applied": { "type": "array", "items": { "type": "string" } }, "restart_required": { "type": "array", "items": { "type": "string" } }, "audit_recorded": { "type": "boolean", "description": "False only when the configuration was committed but its audit record could not be persisted." } } },
+      "ConfigValidation": { "type": "object", "additionalProperties": false, "required": ["valid", "revision", "restart_required"], "properties": { "valid": { "type": "boolean", "const": true }, "revision": { "type": "string" }, "restart_required": { "type": "array", "items": { "type": "string" } } } },
+      "PlayerSummaryCollection": { "type": "array", "maxItems": 5000, "items": { "$ref": "#/components/schemas/PlayerSummary" } },
+      "PlayerPresenceCollection": { "type": "array", "maxItems": 5000, "items": { "$ref": "#/components/schemas/PlayerPresence" } },
+      "PlayerLeaderboard": { "type": "array", "maxItems": 5000, "items": { "$ref": "#/components/schemas/PlayerLeaderboardEntry" } },
+      "PalLeaderboard": { "type": "array", "maxItems": 25000, "items": { "$ref": "#/components/schemas/PalLeaderboardEntry" } },
+      "GuildLeaderboard": { "type": "array", "maxItems": 5000, "items": { "$ref": "#/components/schemas/GuildLeaderboardEntry" } },
+      "GuildCollection": { "type": "array", "maxItems": 5000, "items": { "$ref": "#/components/schemas/Guild" } },
+      "BanCollection": { "type": "array", "maxItems": 5000, "items": { "$ref": "#/components/schemas/Ban" } },
+      "AuditCollection": { "type": "object", "additionalProperties": false, "required": ["items"], "properties": { "items": { "type": "array", "maxItems": 10000, "items": { "$ref": "#/components/schemas/AuditRecord" } } } },
+      "OperatorOperationCollection": { "type": "object", "additionalProperties": false, "required": ["items"], "properties": { "items": { "type": "array", "maxItems": 10000, "items": { "$ref": "#/components/schemas/OperatorOperation" } } } }
+    }
+  }
+}
