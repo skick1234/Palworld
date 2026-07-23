@@ -1213,7 +1213,7 @@ function renderMessagesInspector() {
 }
 
 const SETTING_DEFINITIONS = [
-  { group: "Configuration", id: "hotReload", label: "Hot reload", description: "Watch PalLaw.json and atomically apply valid changes.", type: "boolean" },
+  { group: "Configuration", id: "hotReload", label: "Hot reload", description: "Watch PalLaw.json and automatically apply valid changes.", type: "boolean" },
   { group: "Configuration", id: "hotReloadSeconds", label: "Reload interval", description: "Seconds between file timestamp checks.", type: "number", min: 0.1, max: 60, step: 0.1 },
   { group: "Enforcement", id: "targetFiltering", label: "AI target filtering", description: "Prevent and clear denied player/Pal targets instead of only cancelling damage.", type: "boolean" },
   { group: "Enforcement", id: "targetSweepSeconds", label: "AI sweep interval", description: "Seconds between stale-target cleanup passes.", type: "number", min: 0.05, max: 10, step: 0.05 },
