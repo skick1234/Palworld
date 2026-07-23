@@ -25,8 +25,18 @@ export const ACTORS = [
   { id: "basePal", label: "Base Pal" },
   { id: "wildPal", label: "Wild Pal" },
   { id: "npc", label: "NPC" },
-  { id: "structure", label: "Player-built structure", targetOnly: true },
-  { id: "environment", label: "Environmental map object", targetOnly: true }
+  {
+    id: "structure",
+    label: "Player-built structure",
+    description: "Objects attributed to a player by Palworld.",
+    targetOnly: true
+  },
+  {
+    id: "environment",
+    label: "Environmental map object",
+    description: "Natural mineral resource nodes, including stone and ore. Trees and other foliage are excluded.",
+    targetOnly: true
+  }
 ];
 
 export const ACTIONS = [

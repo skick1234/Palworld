@@ -30,6 +30,7 @@
     },
     "actor": {
       "type": "string",
+      "description": "Actor identifier. The environment target includes natural mineral resource nodes such as stone and ore, but excludes trees and other foliage.",
       "enum": ["player", "partnerPal", "basePal", "wildPal", "npc", "structure", "environment"]
     },
     "sourceActor": {

@@ -1019,7 +1019,7 @@ function renderMapObjectRules(area) {
   const targets = ACTORS.filter((actor) => actor.targetOnly);
   return targets.map((target) => `
     <div class="section-card map-object-rules">
-      <div class="section-card-header"><div><h3>${escapeHtml(target.label)}</h3><p>${target.id === "structure" ? "Objects attributed to a player by Palworld." : "Damageable map objects without player construction attribution."}</p></div></div>
+      <div class="section-card-header"><div><h3>${escapeHtml(target.label)}</h3><p>${escapeHtml(target.description)}</p></div></div>
       <div class="section-card-body"><div class="override-grid">${sources.map((source) => {
     const raw = quickCombatOverride(area, source.id, target.id);
     const effective = matrix[source.id]?.[target.id] ?? 0;
