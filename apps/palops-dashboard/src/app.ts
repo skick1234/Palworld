@@ -1,3 +1,10 @@
+import {
+  effectLabel,
+  nonZeroRelics,
+  roundedCombatPower,
+  scoredPassiveContributions,
+} from "./player-detail";
+
 type AccessMode = "public" | "operator" | "disabled";
 type Access = { mode: AccessMode; fixed: boolean; allowed_modes: AccessMode[] };
 type Capabilities = { endpoints: Record<string, Access> };
@@ -11,14 +18,17 @@ type ContractOperation = {
 };
 
 const views = {
-  leaderboards: { title: "Leaderboards", kicker: "World rankings" },
-  players: { title: "Players", kicker: "Player Summaries" },
-  operations: { title: "Operations", kicker: "Operator actions" },
-  server: { title: "Server", kicker: "Live world state" },
-  configuration: { title: "Configuration", kicker: "palops.json authority" },
-  api: { title: "API", kicker: "Developer reference" },
+  overview: { title: "Overview", kicker: "Command center", summary: "The current world snapshot, rankings, and operator attention in one place." },
+  leaderboards: { title: "Rankings", kicker: "World competition", summary: "Compare players, Party Pals, and guilds from the latest complete server snapshot." },
+  players: { title: "Players", kicker: "Player directory", summary: "Find a player, inspect their public progression, and open operator tools when authorized." },
+  operations: { title: "Operations", kicker: "Operator actions", summary: "Create durable server actions and follow every request through completion." },
+  server: { title: "World", kicker: "Live server state", summary: "Monitor runtime health, online players, positions, settings, and active bans." },
+  configuration: { title: "Settings", kicker: "PalOps configuration", summary: "Review, validate, and apply the complete PalOps configuration safely." },
+  api: { title: "API", kicker: "Developer reference", summary: "Inspect the exact contract, endpoint access, examples, and stable problem responses." },
 } as const;
 type View = keyof typeof views;
+type RankingCategory = "players" | "pals" | "guilds";
+const operatorViews = new Set<View>(["operations", "server", "configuration"]);
 
 type OperationDefinition = {
   operationId: string;
@@ -54,11 +64,14 @@ const byId = <T extends HTMLElement>(id: string) => document.getElementById(id) 
 const content = byId<HTMLElement>("content");
 const notice = byId<HTMLElement>("notice");
 const loginDialog = byId<HTMLDialogElement>("login-dialog");
-let activeView: View = "leaderboards";
+const viewSelect = byId<HTMLSelectElement>("view-select");
+let activeView: View = "overview";
 let selectedPlayerId = "";
 let authenticated = false;
 let capabilities: Capabilities = { endpoints: {} };
 let contractOperations: ContractOperation[] = [];
+let rankingCategory: RankingCategory = "players";
+let renderEpoch = 0;
 
 function element<K extends keyof HTMLElementTagNameMap>(name: K, className = "", text = ""): HTMLElementTagNameMap[K] {
   const node = document.createElement(name);
@@ -69,6 +82,7 @@ function element<K extends keyof HTMLElementTagNameMap>(name: K, className = "",
 function clear(node: HTMLElement) { node.replaceChildren(); }
 function display(value: unknown): string {
   if (value === null || value === undefined || value === "") return "-";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
   if (value && typeof value === "object" && typeof (value as JsonObject).value === "number") {
     const numeric = (value as { value: number }).value;
     const formatted = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(numeric);
@@ -76,6 +90,29 @@ function display(value: unknown): string {
   }
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
+}
+function displayField(key: string, value: unknown): string {
+  if (key === "complete" && typeof value === "boolean") return value ? "Complete" : "Partial";
+  if (key === "combat_power" || key === "team_combat_power") {
+    return display(roundedCombatPower(value));
+  }
+  if ((key.endsWith("_at") || key === "observed_at") && typeof value === "string") {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) return parsed.toLocaleString();
+  }
+  return display(value);
+}
+function relativeTime(value: unknown): string {
+  if (typeof value !== "string") return "Snapshot time unavailable";
+  const time = new Date(value).getTime();
+  if (!Number.isFinite(time)) return "Snapshot time unavailable";
+  const seconds = Math.max(0, Math.round((Date.now() - time) / 1000));
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return new Date(time).toLocaleDateString();
 }
 function score(value: unknown): number {
   if (typeof value === "number") return value;
@@ -101,11 +138,24 @@ function showNotice(message = "", tone: "info" | "error" | "success" = "info") {
   notice.className = `notice ${tone}`;
   notice.textContent = message;
 }
-function activateView(view: View, preservePlayer = false) {
+function syncNavigation() {
+  viewSelect.value = activeView;
+  document.querySelectorAll<HTMLButtonElement>(".nav-item").forEach((item) => {
+    const selected = item.dataset.view === activeView;
+    item.classList.toggle("active", selected);
+    if (selected) item.setAttribute("aria-current", "page");
+    else item.removeAttribute("aria-current");
+    const target = item.dataset.view as View;
+    const locked = operatorViews.has(target) && !authenticated;
+    item.dataset.locked = String(locked);
+    item.setAttribute("aria-description", locked ? "Operator login required" : "");
+  });
+}
+function activateView(view: View, preservePlayer = false, pushHistory = true) {
   activeView = view;
   if (view !== "players" && !preservePlayer) selectedPlayerId = "";
-  document.querySelectorAll(".nav-item").forEach((item) => item.classList.toggle("active", (item as HTMLElement).dataset.view === view));
-  history.replaceState(null, "", `#${view}`);
+  syncNavigation();
+  if (pushHistory) history.pushState(null, "", `#${view}`);
 }
 function panel(title: string, hint = "", wide = false): { root: HTMLElement; body: HTMLElement } {
   const root = element("article", `panel${wide ? " wide" : ""}`);
@@ -122,28 +172,80 @@ function metric(label: string, value: unknown, note = ""): HTMLElement {
   if (note) root.append(element("small", "", note));
   return root;
 }
+function definitionGrid(
+  entries: Array<{ label: string; value: unknown; note?: string }>,
+  className = "",
+): HTMLElement {
+  const root = element("dl", `definition-grid${className ? ` ${className}` : ""}`);
+  for (const entry of entries) {
+    const item = element("div", "definition-item");
+    item.append(element("dt", "", entry.label), element("dd", "", display(entry.value)));
+    if (entry.note) item.append(element("small", "", entry.note));
+    root.append(item);
+  }
+  return root;
+}
+function signedNumber(value: unknown, suffix = ""): string {
+  const numeric = typeof value === "number" && Number.isFinite(value) ? value : 0;
+  const formatted = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(Math.abs(numeric));
+  return `${numeric > 0 ? "+" : numeric < 0 ? "-" : ""}${formatted}${suffix}`;
+}
+function passiveEffects(value: unknown): HTMLElement {
+  const effects = scoredPassiveContributions(items(value));
+  if (!effects.length) return element("p", "pal-effect-empty", "No effects change this Pal's Combat Power.");
+
+  const details = element("details", "pal-effects");
+  const summary = element("summary");
+  summary.append(
+    element("span", "", "Combat effects"),
+    element("strong", "", String(effects.length)),
+  );
+  const list = element("div", "effect-list");
+  for (const effect of effects) {
+    const type = typeof effect.effect_type === "string" ? effect.effect_type : "";
+    const core = type === "MaxHP" || type === "ShotAttack" || type === "Defense";
+    const row = element("div", "effect-row");
+    row.append(
+      element("strong", "", effectLabel(type)),
+      element("span", "", signedNumber(effect.effect_value, "%")),
+      element("small", "", core ? "Core stat" : signedNumber(effect.points, " pts")),
+    );
+    list.append(row);
+  }
+  details.append(summary, list);
+  return details;
+}
 function table(records: JsonObject[], preferred: string[] = [], onSelect?: (record: JsonObject) => void): HTMLElement {
   if (!records.length) return element("p", "empty", "No records are available for this snapshot.");
+  const visibleRecords = records.slice(0, 250);
   const keys = (preferred.length
     ? preferred.filter((key) => records.some((row) => key in row))
     : Object.keys(records[0]).filter((key) => typeof records[0][key] !== "object")).slice(0, 10);
   const wrap = element("div", "table-wrap");
-  const tableNode = element("table");
+  const tableNode = element("table", "data-table");
   const head = element("thead");
   const headRow = element("tr");
   for (const key of keys) headRow.append(element("th", "", key.replaceAll("_", " ")));
   head.append(headRow);
   const body = element("tbody");
-  for (const record of records) {
+  for (const record of visibleRecords) {
     const row = element("tr", onSelect ? "selectable" : "");
     if (onSelect) {
       row.tabIndex = 0;
+      row.setAttribute("aria-label", `Open ${display(record.display_name ?? record.name ?? record.id ?? "record")}`);
       row.addEventListener("click", () => onSelect(record));
-      row.addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") onSelect(record); });
+      row.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onSelect(record);
+        }
+      });
     }
     for (const key of keys) {
-      const value = display(record[key]);
+      const value = displayField(key, record[key]);
       const cell = element("td", "", value);
+      cell.dataset.label = key.replaceAll("_", " ");
+      if (typeof record[key] === "number" || score(record[key]) !== 0) cell.classList.add("numeric");
       cell.title = value;
       row.append(cell);
     }
@@ -151,6 +253,7 @@ function table(records: JsonObject[], preferred: string[] = [], onSelect?: (reco
   }
   tableNode.append(head, body);
   wrap.append(tableNode);
+  if (records.length > visibleRecords.length) wrap.append(element("p", "table-limit", `Showing the first ${visibleRecords.length} of ${records.length} records. Use search or filters to narrow the result.`));
   return wrap;
 }
 function labeled(labelText: string, control: HTMLElement, helper = ""): HTMLLabelElement {
@@ -181,18 +284,28 @@ async function loadSession() {
   const response = await fetch("/api/session");
   const state = await response.json() as { authenticated: boolean; expires_at: string | null };
   authenticated = state.authenticated;
-  byId("session-label").textContent = authenticated && state.expires_at ? `Operator until ${new Date(state.expires_at).toLocaleTimeString()}` : "Public session";
+  byId("session-label").textContent = authenticated && state.expires_at ? `Operator until ${new Date(state.expires_at).toLocaleTimeString()}` : "Public access";
   byId("login-button").textContent = authenticated ? "Log out" : "Operator login";
+  syncNavigation();
 }
 async function updateWorld() {
   try {
-    const status = await api("/v1/server/status", "getServerStatus") as JsonObject;
-    const ready = status.ready === true;
+    const health = await api("/health", "getHealth") as JsonObject;
+    const ready = health.ready === true;
     byId("world-dot").classList.toggle("ready", ready);
-    byId("world-label").textContent = display(status.world_label ?? (ready ? "World ready" : "Runtime pending"));
-    byId("world-detail").textContent = `${display(status.online_player_count)} online, revision ${display(status.snapshot_revision)}`;
+    byId("world-dot").classList.remove("error");
+    if (authenticated && access("getServerStatus")?.mode !== "disabled") {
+      const status = await api("/v1/server/status", "getServerStatus") as JsonObject;
+      byId("world-label").textContent = display(status.world_label ?? (ready ? "World ready" : "Runtime pending"));
+      byId("world-detail").textContent = `${display(status.online_player_count)} online, snapshot ${display(status.snapshot_revision)}`;
+    } else {
+      byId("world-label").textContent = ready ? "PalOps ready" : "PalOps needs attention";
+      byId("world-detail").textContent = authenticated ? "Live world status is disabled" : "Login for live world status";
+    }
   } catch (error) {
-    byId("world-label").textContent = "Public mode";
+    byId("world-dot").classList.remove("ready");
+    byId("world-dot").classList.add("error");
+    byId("world-label").textContent = "PalOps unavailable";
     byId("world-detail").textContent = error instanceof Error ? error.message : "Status unavailable";
   }
 }
@@ -213,53 +326,285 @@ function flattenedPlayer(player: JsonObject): JsonObject {
   };
 }
 
-async function renderLeaderboards() {
-  const grid = element("div", "grid");
+type RankingData = { players: JsonObject[]; pals: JsonObject[]; guilds: JsonObject[] };
+
+async function loadRankings(): Promise<RankingData> {
   const results = await Promise.all([
     api("/v1/leaderboards/players", "listPlayerLeaderboard"),
     api("/v1/leaderboards/pals", "listPalLeaderboard"),
     api("/v1/leaderboards/guilds", "listGuildLeaderboard"),
   ]);
-  const players = items(results[0]).sort((a, b) => score(b.team_combat_power) - score(a.team_combat_power));
-  const pals = items(results[1]).sort((a, b) => score(b.combat_power) - score(a.combat_power));
-  const guilds = items(results[2]).sort((a, b) => score(b.combat_power) - score(a.combat_power));
+  return {
+    players: items(results[0]).sort((a, b) => score(b.team_combat_power) - score(a.team_combat_power)),
+    pals: items(results[1]).sort((a, b) => score(b.combat_power) - score(a.combat_power)),
+    guilds: items(results[2]).sort((a, b) => score(b.combat_power) - score(a.combat_power)),
+  };
+}
+
+function rankingName(category: RankingCategory, record: JsonObject): string {
+  if (category === "players") return display(record.display_name);
+  if (category === "pals") return display(record.display_name || record.species);
+  return display(record.name);
+}
+
+function rankingScore(category: RankingCategory, record: JsonObject): unknown {
+  return category === "players" ? record.team_combat_power : record.combat_power;
+}
+
+function rankingMeta(category: RankingCategory, record: JsonObject): string {
+  if (category === "players") return [record.guild_name, record.level ? `Level ${record.level}` : ""].filter(Boolean).join(" | ") || "Independent player";
+  if (category === "pals") return [record.species, record.owner_display_name].filter(Boolean).join(" | ");
+  return `${display(record.member_count)} members`;
+}
+
+function rankingComplete(category: RankingCategory, record: JsonObject): boolean {
+  return record.complete !== false && object(rankingScore(category, record)).complete !== false;
+}
+
+function rankingTable(category: RankingCategory, records: JsonObject[]): HTMLElement {
+  if (!records.length) return element("div", "empty-state", "No ranked records match this search.");
+  const wrap = element("div", "table-wrap");
+  const tableNode = element("table", "data-table ranking-table");
+  const head = element("thead");
+  const headRow = element("tr");
+  const labels = category === "players"
+    ? ["Rank", "Player", "Guild", "Level", "Combat power", "Status"]
+    : category === "pals"
+      ? ["Rank", "Party Pal", "Species", "Owner", "Level", "Combat power"]
+      : ["Rank", "Guild", "Members", "Firepower", "Combat power", "Status"];
+  const optionalLabels = new Set(["Guild", "Level", "Species", "Owner", "Members", "Firepower"]);
+  labels.forEach((label) => {
+    const cell = element("th", optionalLabels.has(label) ? "optional-column" : "", label);
+    if (label === "Status") cell.classList.add("ranking-status-column");
+    if (label.includes("power") || label === "Level" || label === "Members" || label === "Firepower") cell.classList.add("numeric");
+    headRow.append(cell);
+  });
+  head.append(headRow);
+  const body = element("tbody");
+  records.forEach((record, index) => {
+    const row = element("tr", category === "guilds" ? "" : "selectable");
+    const open = category === "players"
+      ? () => openPlayer(String(record.player_id ?? ""))
+      : category === "pals"
+        ? () => openPlayer(String(record.owner_player_id ?? ""))
+        : null;
+    if (open) {
+      row.tabIndex = 0;
+      row.setAttribute("aria-label", `Open ${rankingName(category, record)}`);
+      row.addEventListener("click", open);
+      row.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          open();
+        }
+      });
+    }
+    row.append(element("td", "rank-cell", `#${display(record.__rank ?? index + 1)}`), element("td", "identity-cell", rankingName(category, record)));
+    if (category === "players") {
+      row.append(
+        element("td", "optional-column", display(record.guild_name)),
+        element("td", "optional-column numeric", display(record.level)),
+        element("td", "score-cell numeric", display(roundedCombatPower(record.team_combat_power))),
+      );
+    } else if (category === "pals") {
+      row.append(
+        element("td", "optional-column", display(record.species)),
+        element("td", "optional-column", display(record.owner_display_name)),
+        element("td", "optional-column numeric", display(record.level)),
+        element("td", "score-cell numeric", display(roundedCombatPower(record.combat_power))),
+      );
+    } else {
+      row.append(
+        element("td", "optional-column numeric", display(record.member_count)),
+        element("td", "optional-column numeric", display(record.firepower)),
+        element("td", "score-cell numeric", display(roundedCombatPower(record.combat_power))),
+      );
+    }
+    if (category !== "pals") {
+      const status = element("span", `status-label${rankingComplete(category, record) ? "" : " partial"}`, rankingComplete(category, record) ? "Complete" : "Partial");
+      const statusCell = element("td", "ranking-status-column");
+      statusCell.append(status);
+      row.append(statusCell);
+    }
+    body.append(row);
+  });
+  tableNode.append(head, body);
+  wrap.append(tableNode);
+  return wrap;
+}
+
+function podium(category: RankingCategory, records: JsonObject[]): HTMLElement {
+  const root = element("section", "podium");
+  if (!records.length) return root;
+  const winner = element("article", "podium-winner");
+  const winnerTop = element("div");
+  winnerTop.append(element("span", "podium-rank", "World number one"), element("div", "podium-name", rankingName(category, records[0])));
+  const scoreLine = element("div", "podium-score", display(roundedCombatPower(rankingScore(category, records[0]))));
+  scoreLine.append(element("small", "", "combat power"));
+  const winnerBottom = element("div");
+  winnerBottom.append(scoreLine, element("p", "empty", rankingMeta(category, records[0])));
+  winner.append(winnerTop, winnerBottom);
+  const rest = element("div", "podium-rest");
+  records.slice(1, 3).forEach((record, index) => {
+    const card = element("article", "podium-card");
+    const copy = element("div");
+    copy.append(element("strong", "", rankingName(category, record)), element("small", "", `${display(roundedCombatPower(rankingScore(category, record)))} combat power`));
+    card.append(element("span", "podium-number", `0${index + 2}`), copy);
+    rest.append(card);
+  });
+  root.append(winner, rest);
+  return root;
+}
+
+function latestRankingObservation(data: RankingData): unknown {
+  return [...data.players, ...data.pals, ...data.guilds]
+    .map((record) => record.observed_at)
+    .filter((value): value is string => typeof value === "string")
+    .sort()
+    .at(-1);
+}
+
+async function renderOverview(epoch: number) {
+  const [healthValue, rankings, statusValue, operationsValue] = await Promise.all([
+    api("/health", "getHealth"),
+    loadRankings(),
+    authenticated ? api("/v1/server/status", "getServerStatus").catch(() => null) : Promise.resolve(null),
+    authenticated ? api("/v1/ops", "listOperations").catch(() => null) : Promise.resolve(null),
+  ]);
+  if (epoch !== renderEpoch) return;
+  const health = healthValue as JsonObject;
+  const status = statusValue as JsonObject | null;
+  const grid = element("div", "grid");
+  const hero = element("section", "overview-hero");
+  const heroCopy = element("div");
+  heroCopy.append(
+    element("p", "eyebrow", health.ready === true ? "World data available" : "PalOps needs attention"),
+    element("h2", "", authenticated ? "Run the world from one clear view." : "See who leads. Log in only when you need control."),
+    element("p", "", authenticated
+      ? "Health, rankings, current load, and durable operations stay visible without digging through API-shaped screens."
+      : "Public rankings stay available without exposing privileged world state or operator controls."),
+  );
+  const heroActions = element("footer");
+  const rankingsButton = element("button", "button primary", "Open rankings") as HTMLButtonElement;
+  rankingsButton.addEventListener("click", () => { activateView("leaderboards"); void render(); });
+  const secondaryButton = element("button", "button", authenticated ? "Open world" : "Operator login") as HTMLButtonElement;
+  secondaryButton.addEventListener("click", () => {
+    if (authenticated) { activateView("server"); void render(); }
+    else byId<HTMLButtonElement>("login-button").click();
+  });
+  heroActions.append(rankingsButton, secondaryButton);
+  hero.append(heroCopy, heroActions);
+
+  const attention = element("aside", "attention-panel");
+  attention.append(element("p", "eyebrow", "Attention"), element("h2", "", authenticated ? "Operator state" : "Public access"));
+  const attentionList = element("div", "attention-list");
+  const attentionRows = [
+    { title: health.ready === true ? "PalOps is ready" : "Runtime is not ready", detail: health.restart_required === true ? "A restart is required." : "Configuration is active." },
+    { title: `Snapshot ${relativeTime(latestRankingObservation(rankings))}`, detail: `${rankings.players.length} players are currently ranked.` },
+    authenticated
+      ? { title: `${display(status?.online_player_count)} players online`, detail: `${display(status?.command_queue_depth)} commands waiting.` }
+      : { title: "Operator controls are locked", detail: "Login only when you need private state or server actions." },
+  ];
+  attentionRows.forEach(({ title, detail }) => {
+    const item = element("div", "attention-item");
+    const copy = element("div");
+    copy.append(element("strong", "", title), element("small", "", detail));
+    item.append(element("span", "attention-marker"), copy);
+    attentionList.append(item);
+  });
+  attention.append(attentionList);
+  grid.append(hero, attention);
+
   const metrics = element("section", "metric-strip");
   metrics.append(
-    metric("Ranked players", players.length),
-    metric("Top team", players[0]?.display_name ?? "-", display(players[0]?.team_combat_power)),
-    metric("Top Party Pal", pals[0]?.display_name ?? pals[0]?.species ?? "-", display(pals[0]?.combat_power)),
-    metric("Top guild", guilds[0]?.name ?? "-", display(guilds[0]?.combat_power)),
+    metric("Ranked players", rankings.players.length, `Snapshot ${relativeTime(latestRankingObservation(rankings))}`),
+    metric("Top player", rankings.players[0]?.display_name ?? "-", display(roundedCombatPower(rankings.players[0]?.team_combat_power))),
+    metric("Top Party Pal", rankings.pals[0]?.display_name ?? rankings.pals[0]?.species ?? "-", display(roundedCombatPower(rankings.pals[0]?.combat_power))),
+    metric(authenticated ? "Online now" : "Top guild", authenticated ? status?.online_player_count : rankings.guilds[0]?.name ?? "-", authenticated ? `${display(status?.player_count)} known players` : display(roundedCombatPower(rankings.guilds[0]?.combat_power))),
   );
   grid.append(metrics);
-  const playerPanel = panel("Players", "Sorted by team combat power", true);
-  playerPanel.body.replaceWith(table(players, ["display_name", "guild_name", "level", "team_combat_power", "team_firepower", "complete"], (record) => openPlayer(String(record.player_id ?? ""))));
-  const palPanel = panel("Party Pals", "Sorted by combat power");
-  palPanel.body.replaceWith(table(pals, ["display_name", "species", "owner_display_name", "level", "combat_power", "firepower"]));
-  const guildPanel = panel("Guilds", "Sorted by combat power");
-  guildPanel.body.replaceWith(table(guilds, ["name", "member_count", "combat_power", "firepower", "complete"]));
-  grid.append(playerPanel.root, palPanel.root, guildPanel.root);
+
+  const leaders = panel("Leading players", "Latest team combat power", true);
+  leaders.body.replaceWith(rankingTable("players", rankings.players.slice(0, 5)));
+  grid.append(leaders.root);
+  if (authenticated && operationsValue) {
+    const recent = panel("Recent operations", "Newest durable server actions", true);
+    recent.body.replaceWith(table(items(operationsValue).slice(0, 6), ["type", "status", "target_id", "message", "created_at"]));
+    grid.append(recent.root);
+  }
   content.append(grid);
+}
+
+async function renderLeaderboards(epoch: number) {
+  const data = await loadRankings();
+  if (epoch !== renderEpoch) return;
+  const shell = element("div", "ranking-shell");
+  const toolbar = element("section", "ranking-toolbar");
+  const tabs = element("div", "ranking-tabs");
+  const categoryLabels: Record<RankingCategory, string> = { players: "Players", pals: "Party Pals", guilds: "Guilds" };
+  for (const category of Object.keys(categoryLabels) as RankingCategory[]) {
+    const button = element("button", `ranking-tab${category === rankingCategory ? " active" : ""}`, categoryLabels[category]) as HTMLButtonElement;
+    button.type = "button";
+    button.dataset.category = category;
+    tabs.append(button);
+  }
+  const search = element("input") as HTMLInputElement;
+  search.type = "search";
+  search.placeholder = "Name, guild, species, or owner";
+  const searchLabel = element("label", "ranking-search");
+  searchLabel.append(element("span", "", "Filter this ranking"), search);
+  toolbar.append(tabs, searchLabel);
+  const podiumHost = element("div");
+  const listPanel = panel("Rankings", "Latest snapshot", true);
+  const renderCategory = () => {
+    const records = data[rankingCategory];
+    const rankedRecords = records.map((record, index) => ({ ...record, __rank: index + 1 }));
+    const query = search.value.trim().toLowerCase();
+    const filtered = query
+      ? rankedRecords.filter((record) => Object.values(record).some((value) => typeof value === "string" && value.toLowerCase().includes(query)))
+      : rankedRecords;
+    const visible = filtered.slice(0, 100);
+    clear(podiumHost);
+    podiumHost.append(podium(rankingCategory, records));
+    listPanel.root.querySelector("h2")!.textContent = categoryLabels[rankingCategory];
+    listPanel.root.querySelector("small")!.textContent = `${filtered.length} ranked${filtered.length > visible.length ? ` | showing ${visible.length}` : ""} | snapshot ${relativeTime(records[0]?.observed_at)}`;
+    clear(listPanel.body);
+    listPanel.body.append(rankingTable(rankingCategory, visible));
+  };
+  tabs.addEventListener("click", (event) => {
+    const button = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-category]");
+    if (!button) return;
+    rankingCategory = button.dataset.category as RankingCategory;
+    tabs.querySelectorAll("button").forEach((item) => item.classList.toggle("active", item === button));
+    search.value = "";
+    renderCategory();
+  });
+  search.addEventListener("input", renderCategory);
+  renderCategory();
+  shell.append(toolbar, podiumHost, listPanel.root);
+  content.append(shell);
 }
 
 function openPlayer(id: string) {
   if (!id) return;
   selectedPlayerId = id;
   activeView = "players";
-  history.replaceState(null, "", `#players/${encodeURIComponent(id)}`);
-  document.querySelectorAll(".nav-item").forEach((item) => item.classList.toggle("active", (item as HTMLElement).dataset.view === "players"));
+  history.pushState(null, "", `#players/${encodeURIComponent(id)}`);
+  syncNavigation();
   void render();
 }
 
-async function renderPlayers() {
-  if (selectedPlayerId) return renderPlayerDetail(selectedPlayerId);
+async function renderPlayers(epoch: number) {
+  if (selectedPlayerId) return renderPlayerDetail(selectedPlayerId, epoch);
   const players = items(await api("/v1/players", "listPlayers")).map(flattenedPlayer);
+  if (epoch !== renderEpoch) return;
   const toolbar = element("div", "list-toolbar");
   const search = element("input") as HTMLInputElement;
   search.type = "search";
   search.placeholder = "Search name, guild, or player ID";
-  search.setAttribute("aria-label", "Search players");
+  const searchLabel = labeled("Search players", search, "Matches display name, guild, or opaque player ID.");
   const count = element("span", "result-count", `${players.length} players`);
-  toolbar.append(search, count);
+  toolbar.append(searchLabel, count);
   const playerPanel = panel("Player directory", "Select a player for details", true);
   const renderRows = () => {
     const query = search.value.trim().toLowerCase();
@@ -273,8 +618,7 @@ async function renderPlayers() {
   content.append(toolbar, playerPanel.root);
 }
 
-async function renderPlayerDetail(playerId: string) {
-  byId("view-kicker").textContent = "Player detail";
+async function renderPlayerDetail(playerId: string, epoch: number) {
   const [detailValue, presenceValue, operationsValue] = await Promise.all([
     api(`/v1/players/${encodeURIComponent(playerId)}`, "getPlayer"),
     api(`/v1/players/${encodeURIComponent(playerId)}/presence`, "getPlayerPresence").catch(() => null),
@@ -282,12 +626,15 @@ async function renderPlayerDetail(playerId: string) {
       ? api("/v1/ops", "listOperations").catch(() => null)
       : Promise.resolve(null),
   ]);
+  if (epoch !== renderEpoch) return;
+  byId("view-kicker").textContent = "Player detail";
   const detail = detailValue as JsonObject;
   const presence = presenceValue as JsonObject | null;
   byId("view-title").textContent = display(detail.display_name);
+  byId("view-summary").textContent = `Public progression and current Party Pals for ${display(detail.display_name)}.`;
   const actions = element("div", "detail-actions");
   const back = element("button", "button", "Back to players") as HTMLButtonElement;
-  back.addEventListener("click", () => { selectedPlayerId = ""; history.replaceState(null, "", "#players"); void render(); });
+  back.addEventListener("click", () => { selectedPlayerId = ""; history.pushState(null, "", "#players"); void render(); });
   const operate = element("button", "button primary", authenticated ? "Open all operations" : "Operator login") as HTMLButtonElement;
   operate.addEventListener("click", () => {
     if (authenticated) { activateView("operations", true); void render(); }
@@ -301,48 +648,78 @@ async function renderPlayerDetail(playerId: string) {
     metric("Level", detail.level),
     metric("Party Pals", counts.party_pals),
     metric("Owned Pals", counts.owned_pals),
-    metric("Team combat power", scores.team_combat_power),
+    metric("Team combat power", roundedCombatPower(scores.team_combat_power)),
   );
   const grid = element("div", "grid");
   const overview = panel("Profile", String(detail.id ?? ""));
-  overview.body.append(table([{
-    guild: detail.guild_name,
-    online: presence?.online ?? "Restricted",
-    platform_id: presence?.platform_id ?? "Restricted",
-    health: presence?.health ?? "Restricted",
-    observed_at: detail.observed_at,
-    complete: detail.complete,
-  }], ["guild", "online", "platform_id", "health", "observed_at", "complete"]));
+  const profileEntries: Array<{ label: string; value: unknown; note?: string }> = [
+    { label: "Guild", value: detail.guild_name },
+    { label: "Snapshot", value: detail.complete === true ? "Complete" : "Partial" },
+    { label: "Observed", value: displayField("observed_at", detail.observed_at) },
+  ];
+  if (presence) {
+    profileEntries.splice(1, 0,
+      { label: "Online", value: presence.online },
+      { label: "Health", value: presence.health },
+      { label: "Platform ID", value: presence.platform_id },
+    );
+  } else {
+    profileEntries.splice(1, 0, {
+      label: "Live state",
+      value: "Restricted",
+      note: "Operator login required",
+    });
+  }
+  overview.body.append(definitionGrid(profileEntries));
   const stats = panel("Statistics", "Counts only, no private inventories");
   const statistics = object(detail.statistics);
-  stats.body.append(table([{
-    experience: statistics.experience,
-    boss_defeats: statistics.boss_defeats,
-    pal_captures: statistics.pal_captures,
-    fishing: statistics.fishing,
-    inventory_items: counts.inventory_items,
-    unlocked_technologies: counts.unlocked_technologies,
-  }], ["experience", "boss_defeats", "pal_captures", "fishing", "inventory_items", "unlocked_technologies"]));
-  const relics = panel("Relic counts", "Per relic type");
-  const relicRows = Object.entries(object(detail.relic_counts)).map(([relic_type, count]) => ({ relic_type, count }));
-  relics.body.append(table(relicRows, ["relic_type", "count"]));
+  stats.body.append(definitionGrid([
+    { label: "Experience", value: statistics.experience },
+    { label: "Boss defeats", value: statistics.boss_defeats },
+    { label: "Pal captures", value: statistics.pal_captures },
+    { label: "Fishing", value: statistics.fishing },
+    { label: "Inventory items", value: counts.inventory_items },
+    { label: "Technologies", value: counts.unlocked_technologies },
+  ], "statistics-grid"));
+  const relics = panel("Relics", "Only earned relics", true);
+  const relicRows = nonZeroRelics(object(detail.relic_counts));
+  if (relicRows.length) {
+    relics.body.append(definitionGrid(
+      relicRows.map((relic) => ({ label: relic.relic_type, value: relic.count })),
+      "relic-grid",
+    ));
+  } else {
+    relics.body.append(element("p", "empty", "No earned relics were reported in this snapshot."));
+  }
   const party = panel("Party Pals", "Current five-slot party", true);
   const partyGrid = element("div", "party-grid");
   for (const pal of items(detail.party_pals)) {
     const card = element("article", "party-pal");
     const heading = element("header");
-    heading.append(element("strong", "", display(pal.display_name || pal.species)), element("span", "", `Level ${display(pal.level)}`));
-    card.append(heading, table([{
-      species: pal.species,
-      condenser_rank: pal.condenser_rank,
-      max_hp: pal.max_hp,
-      shot_attack: pal.shot_attack,
-      defense: pal.defense,
-      firepower: pal.firepower,
-      combat_power: pal.combat_power,
-    }], ["species", "condenser_rank", "max_hp", "shot_attack", "defense", "firepower", "combat_power"]));
-    const passiveList = items(pal.passives);
-    if (passiveList.length) card.append(table(passiveList, ["effect_type", "effect_value", "weight", "points"]));
+    const identity = element("div", "pal-identity");
+    identity.append(
+      element("strong", "", display(pal.display_name || pal.species)),
+      element("small", "", display(pal.species)),
+    );
+    heading.append(identity, element("span", "pal-level", `Level ${display(pal.level)}`));
+    const body = element("div", "pal-body");
+    const scores = element("div", "pal-scoreboard");
+    const combatScore = element("div", "pal-score primary");
+    combatScore.append(element("span", "", "Combat Power"), element("strong", "", display(roundedCombatPower(pal.combat_power))));
+    const firepowerScore = element("div", "pal-score");
+    firepowerScore.append(element("span", "", "Firepower"), element("strong", "", display(pal.firepower)));
+    scores.append(combatScore, firepowerScore);
+    body.append(
+      scores,
+      definitionGrid([
+        { label: "Maximum HP", value: pal.max_hp },
+        { label: "Shot attack", value: pal.shot_attack },
+        { label: "Defense", value: pal.defense },
+        { label: "Condenser", value: `${display(pal.condenser_rank)} / 4` },
+      ], "pal-stat-grid"),
+      passiveEffects(pal.passives),
+    );
+    card.append(heading, body);
     partyGrid.append(card);
   }
   if (!partyGrid.children.length) partyGrid.append(element("p", "empty", "No Party Pals are available in this snapshot."));
@@ -589,7 +966,7 @@ function operationComposer(definitions = operationDefinitions, lockedPlayerId = 
   return form;
 }
 
-async function renderOperations() {
+async function renderOperations(epoch: number) {
   const grid = element("div", "grid");
   const command = panel("Create operation", "All requests are durable and idempotent");
   command.body.append(operationComposer());
@@ -599,13 +976,14 @@ async function renderOperations() {
     api("/v1/ops", "listOperations"),
     api("/v1/audit", "listAudit"),
   ]);
+  if (epoch !== renderEpoch) return;
   historyPanel.body.replaceWith(table(items(operations), ["id", "type", "status", "target_id", "message", "created_at", "updated_at"]));
   auditPanel.body.replaceWith(table(items(audits), ["id", "operation_id", "operation_type", "target_id", "outcome", "created_at"]));
   grid.append(command.root, historyPanel.root, auditPanel.root);
   content.append(grid);
 }
 
-async function renderServer() {
+async function renderServer(epoch: number) {
   const grid = element("div", "grid");
   const [statusValue, settingsValue, onlineValue, mapValue, bansValue] = await Promise.all([
     api("/v1/server/status", "getServerStatus"),
@@ -614,6 +992,7 @@ async function renderServer() {
     api("/v1/world/map", "getWorldMap"),
     api("/v1/bans", "listBans"),
   ]);
+  if (epoch !== renderEpoch) return;
   const status = statusValue as JsonObject;
   const metrics = element("section", "metric-strip");
   metrics.append(
@@ -671,8 +1050,9 @@ function changedConfigValues(before: unknown, after: unknown, path = ""): Array<
   return [{ path: path || "configuration", before, after }];
 }
 
-async function renderConfiguration() {
+async function renderConfiguration(epoch: number) {
   const { body, response } = await apiResponse("/v1/config", "getConfig");
+  if (epoch !== renderEpoch) return;
   const config = body as JsonObject;
   const etag = response.headers.get("etag") ?? "";
   const form = element("form", "config-form") as HTMLFormElement;
@@ -859,9 +1239,10 @@ async function renderConfiguration() {
   content.append(form);
 }
 
-async function renderApi() {
+async function renderApi(epoch: number) {
   if (!contractOperations.length) await loadContract();
   const openApi = await api("/v1/openapi.json", "getOpenApi") as JsonObject;
+  if (epoch !== renderEpoch) return;
   const configExample = {
     version: 1,
     listen: { host: "127.0.0.1", port: 8222 },
@@ -951,25 +1332,107 @@ async function renderApi() {
   content.append(summary, note, contractPanel.root, problems.root, reference.root);
 }
 
+function loadingState(): HTMLElement {
+  const root = element("div", "loading-state");
+  root.setAttribute("role", "status");
+  root.setAttribute("aria-label", "Loading current state");
+  root.append(element("div", "skeleton skeleton-heading"), element("div", "skeleton skeleton-metrics"), element("div", "skeleton skeleton-panel"));
+  return root;
+}
+
+function lockedState(): HTMLElement {
+  const root = element("section", "locked-state");
+  const copy = element("div", "state-copy");
+  copy.append(
+    element("span", "state-code", "Operator access"),
+    element("h2", "", `${views[activeView].title} is protected`),
+    element("p", "", "Use the server AdminPassword to open live world data and server controls. Public rankings remain available without a login."),
+  );
+  const actions = element("div", "state-actions");
+  const login = element("button", "button primary", "Operator login") as HTMLButtonElement;
+  login.addEventListener("click", () => byId<HTMLButtonElement>("login-button").click());
+  const rankings = element("button", "button", "Back to rankings") as HTMLButtonElement;
+  rankings.addEventListener("click", () => { activateView("leaderboards"); void render(); });
+  actions.append(login, rankings);
+  copy.append(actions);
+  root.append(copy);
+  return root;
+}
+
+function errorState(error: unknown): HTMLElement {
+  const rawMessage = error instanceof Error ? error.message : String(error);
+  const message = /unable to connect|failed to fetch|network/i.test(rawMessage)
+    ? "The dashboard cannot reach PalOps. Confirm the API is running, then try again."
+    : rawMessage;
+  const root = element("section", "error-state");
+  const copy = element("div", "state-copy");
+  copy.append(
+    element("span", "state-code", "Connection failed"),
+    element("h2", "", "PalOps could not load this view"),
+    element("p", "", message || "The dashboard did not receive a usable response."),
+  );
+  const actions = element("div", "state-actions");
+  const retry = element("button", "button primary", "Try again") as HTMLButtonElement;
+  retry.addEventListener("click", () => { capabilities = { endpoints: {} }; void render(); void updateWorld(); });
+  const secondaryView: View = activeView === "leaderboards" ? "overview" : "leaderboards";
+  const secondary = element("button", "button", secondaryView === "overview" ? "Open overview" : "Open rankings") as HTMLButtonElement;
+  secondary.addEventListener("click", () => { activateView(secondaryView); void render(); });
+  actions.append(retry, secondary);
+  copy.append(actions);
+  root.append(copy);
+  return root;
+}
+
 async function render() {
+  const epoch = ++renderEpoch;
+  const refreshButton = byId<HTMLButtonElement>("refresh-button");
+  refreshButton.hidden = false;
+  refreshButton.disabled = true;
   clear(content);
   showNotice();
   byId("view-title").textContent = views[activeView].title;
   byId("view-kicker").textContent = views[activeView].kicker;
-  content.append(element("div", "loading", "Loading current state"));
+  byId("view-summary").textContent = views[activeView].summary;
+  syncNavigation();
+  if (operatorViews.has(activeView) && !authenticated) {
+    content.append(lockedState());
+    byId("last-updated").textContent = "Operator login required";
+    refreshButton.hidden = true;
+    refreshButton.disabled = false;
+    return;
+  }
+  content.append(loadingState());
   try {
     if (!Object.keys(capabilities.endpoints).length) await loadCapabilities();
+    if (epoch !== renderEpoch) return;
     clear(content);
-    if (activeView === "leaderboards") await renderLeaderboards();
-    else if (activeView === "players") await renderPlayers();
-    else if (activeView === "operations") await renderOperations();
-    else if (activeView === "server") await renderServer();
-    else if (activeView === "configuration") await renderConfiguration();
-    else await renderApi();
+    if (activeView === "overview") await renderOverview(epoch);
+    else if (activeView === "leaderboards") await renderLeaderboards(epoch);
+    else if (activeView === "players") await renderPlayers(epoch);
+    else if (activeView === "operations") await renderOperations(epoch);
+    else if (activeView === "server") await renderServer(epoch);
+    else if (activeView === "configuration") await renderConfiguration(epoch);
+    else await renderApi(epoch);
+    if (epoch === renderEpoch) byId("last-updated").textContent = `Updated ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
   } catch (error) {
+    if (epoch !== renderEpoch) return;
     clear(content);
-    content.append(element("div", "error-state", error instanceof Error ? error.message : String(error)));
+    content.append(errorState(error));
+    byId("last-updated").textContent = "Refresh failed";
+  } finally {
+    if (epoch === renderEpoch) refreshButton.disabled = false;
   }
+}
+
+function navigateFromLocation() {
+  const hash = decodeURIComponent(location.hash.slice(1));
+  selectedPlayerId = "";
+  if (hash.startsWith("players/")) {
+    activeView = "players";
+    selectedPlayerId = hash.slice("players/".length);
+  } else if (hash in views) activeView = hash as View;
+  else activeView = "overview";
+  syncNavigation();
 }
 
 byId("tabs").addEventListener("click", (event) => {
@@ -978,12 +1441,22 @@ byId("tabs").addEventListener("click", (event) => {
   activateView(button.dataset.view as View);
   void render();
 });
+viewSelect.addEventListener("change", () => { activateView(viewSelect.value as View); void render(); });
+document.querySelector<HTMLAnchorElement>(".brand")?.addEventListener("click", (event) => {
+  event.preventDefault();
+  activateView("overview");
+  void render();
+});
+window.addEventListener("popstate", () => { navigateFromLocation(); void render(); });
 byId("refresh-button").addEventListener("click", () => { capabilities = { endpoints: {} }; void render(); void updateWorld(); });
 byId("login-button").addEventListener("click", async () => {
   if (authenticated) {
-    await fetch("/api/session", { method: "DELETE" });
-    await loadSession();
-    await render();
+    try {
+      await fetch("/api/session", { method: "DELETE" });
+      await loadSession();
+      await render();
+      await updateWorld();
+    } catch (error) { showNotice(error instanceof Error ? error.message : String(error), "error"); }
   } else loginDialog.showModal();
 });
 byId("cancel-login").addEventListener("click", () => loginDialog.close());
@@ -991,22 +1464,32 @@ byId("login-dialog").querySelector(".close-button")?.addEventListener("click", (
 byId<HTMLFormElement>("login-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const error = byId("login-error");
+  const submit = byId<HTMLFormElement>("login-form").querySelector<HTMLButtonElement>("[type=submit]")!;
   error.hidden = true;
-  const response = await fetch("/api/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: byId<HTMLInputElement>("password").value }) });
-  const body = await response.json() as JsonObject;
-  if (!response.ok) { error.textContent = errorMessage(body, response.status); error.hidden = false; return; }
-  byId<HTMLInputElement>("password").value = "";
-  loginDialog.close();
-  await loadSession();
-  await render();
-  await updateWorld();
+  submit.disabled = true;
+  try {
+    const response = await fetch("/api/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: byId<HTMLInputElement>("password").value }) });
+    const body = await response.json() as JsonObject;
+    if (!response.ok) { error.textContent = errorMessage(body, response.status); error.hidden = false; return; }
+    byId<HTMLInputElement>("password").value = "";
+    loginDialog.close();
+    await loadSession();
+    await render();
+    await updateWorld();
+  } catch (caught) {
+    error.textContent = caught instanceof Error ? caught.message : String(caught);
+    error.hidden = false;
+  } finally { submit.disabled = false; }
 });
+
 const themeButton = byId("theme-button");
 const stored = localStorage.getItem("palworld-mods-theme");
-document.documentElement.dataset.theme = stored === "light" ? "light" : "dark";
+document.documentElement.dataset.theme = stored === "light" || stored === "dark"
+  ? stored
+  : matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
 function themeLabel() {
   const dark = document.documentElement.dataset.theme === "dark";
-  themeButton.textContent = dark ? "LT" : "DK";
+  themeButton.textContent = dark ? "Light" : "Dark";
   themeButton.setAttribute("aria-label", `Use ${dark ? "light" : "dark"} theme`);
 }
 themeLabel();
@@ -1016,11 +1499,9 @@ themeButton.addEventListener("click", () => {
   themeLabel();
 });
 
-const hash = decodeURIComponent(location.hash.slice(1));
-if (hash.startsWith("players/")) { activeView = "players"; selectedPlayerId = hash.slice("players/".length); }
-else if (hash in views) activeView = hash as View;
-document.querySelectorAll(".nav-item").forEach((item) => item.classList.toggle("active", (item as HTMLElement).dataset.view === activeView));
-await loadSession();
-await loadCapabilities();
-await Promise.all([updateWorld(), loadContract()]);
+navigateFromLocation();
+try { await loadSession(); }
+catch (error) { showNotice(error instanceof Error ? error.message : String(error), "error"); }
+void updateWorld();
+void loadContract();
 await render();

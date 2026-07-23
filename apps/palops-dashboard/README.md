@@ -1,6 +1,6 @@
 # PalOps dashboard
 
-Self-hosted Bun dashboard for the PalOps version 1 API. It derives its proxy allowlist from `contracts/palops/openapi.json`, keeps the Palworld admin password only in an absolute-lived server session, and exposes six views: Leaderboards, Players, Operations, Server, Configuration, and API.
+Self-hosted Bun dashboard for the PalOps version 1 API. It derives its proxy allowlist from `contracts/palops/openapi.json`, keeps the Palworld admin password only in an absolute-lived server session, and exposes seven views: Overview, Rankings, Players, Operations, World, Settings, and API. Public rankings remain useful without a login; operator-only views are gated before private requests are made.
 
 ```powershell
 $env:PALOPS_API_BASE = "http://127.0.0.1:8222"

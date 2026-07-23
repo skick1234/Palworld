@@ -199,9 +199,14 @@ const server = Bun.serve({
       if (url.pathname.startsWith("/api/palops/")) return await proxy(request, url.pathname.slice("/api/palops".length));
       if (url.pathname.startsWith("/map-assets/")) return await staticFile(mapAssetsDir, url.pathname.slice("/map-assets/".length));
       if (url.pathname === "/app.js") {
-        const source = await Bun.file(appSourcePath).text();
-        const code = new Bun.Transpiler({ loader: "ts", target: "browser" }).transformSync(source);
-        return new Response(code, { headers: { "Content-Type": "text/javascript; charset=utf-8", "Cache-Control": "no-cache" } });
+        const build = await Bun.build({
+          entrypoints: [appSourcePath],
+          target: "browser",
+          format: "esm",
+          write: false,
+        });
+        if (!build.success || !build.outputs[0]) throw new Error("Dashboard application build failed.");
+        return new Response(build.outputs[0], { headers: { "Content-Type": "text/javascript; charset=utf-8", "Cache-Control": "no-cache" } });
       }
       return await staticFile(publicDir, url.pathname);
     } catch (error) {
