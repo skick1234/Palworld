@@ -15,8 +15,8 @@ import {
   hydrateConfig,
   modeDefinition,
   mapFractionToWorld,
-  parseConfigBytes,
-  parseConfigText,
+  parseConfigBytesWithMigration,
+  parseConfigTextWithMigration,
   quickCombatOverride,
   resolveAreaMessages,
   setQuickCombatOverride,
@@ -25,6 +25,7 @@ import {
   worldToInGameMap,
   worldToMapFraction
 } from "./rules-core.js?v=1";
+import { formatMigrationReport } from "./configuration-migrations.js?v=1";
 import { createMessageEditor } from "./message-editor.js?v=1";
 import { createDocumentStore } from "./document-store.js?v=1";
 
@@ -69,6 +70,7 @@ const L = window.L;
 if (!L) throw new Error("The bundled map library could not be loaded.");
 
 const LOCALIZATION_PANEL_ID = "localization";
+let initialMigrationReport = [];
 
 const documentStore = createDocumentStore({
   initialValue: loadDraft(),
@@ -78,8 +80,9 @@ const documentStore = createDocumentStore({
   historyLimit: 80
 });
 let config = documentStore.value;
-let activeSection = "regions";
-let workspaceView = "list";
+let migrationReport = initialMigrationReport;
+let activeSection = migrationReport.length ? "json" : "regions";
+let workspaceView = migrationReport.length ? "edit" : "list";
 let selectedMessagesPanelId = MESSAGE_EVENTS[0].id;
 let activeMapId = "world";
 let selectedRegionIndex = config.regions.length ? 0 : null;
@@ -172,7 +175,10 @@ else window.addEventListener("resize", scheduleMapLayoutSync);
 function loadDraft() {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
-    return saved ? parseConfigText(saved) : createDefaultConfig();
+    if (!saved) return createDefaultConfig();
+    const parsed = parseConfigTextWithMigration(saved);
+    initialMigrationReport = parsed.migration.report;
+    return parsed.config;
   } catch {
     return createDefaultConfig();
   }
@@ -286,9 +292,10 @@ const messageEditor = createMessageEditor({
   getAreaKey: areaDisclosureKey
 });
 
-function replaceConfig(next, markDirty = false) {
+function replaceConfig(next, markDirty = false, report = []) {
   documentStore.replace(next, { markDirty });
   config = documentStore.value;
+  migrationReport = report;
   selectedRegionIndex = config.regions.length ? 0 : null;
   inspectorTab = "general";
   editingRegionShape = false;
@@ -1242,9 +1249,14 @@ function renderSettingsInspector() {
 }
 
 function renderJsonInspector() {
+  const reportLines = formatMigrationReport(migrationReport);
+  const report = reportLines.length
+    ? `<div class="section-card migration-report"><div class="section-card-body"><strong>Migration report</strong><ul>${reportLines.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ul></div></div>`
+    : "";
   elements.inspector.innerHTML = `
     <div class="json-editor-shell">
       <div class="inspector-header"><h2>${CONFIG_FILE_NAME}</h2><p>Apply validates the document before replacing the form state. Invalid edits never affect the current configuration.</p></div>
+      ${report}
       <textarea id="rawJsonEditor" class="code-editor" spellcheck="false">${escapeHtml(rawEditorValue)}</textarea>
       <div class="code-actions"><button id="applyJsonButton" type="button" class="button primary">Apply JSON</button><button id="formatJsonButton" type="button" class="button ghost">Format current</button><button id="copyJsonButton" type="button" class="button ghost">Copy</button><button id="resetJsonButton" type="button" class="button ghost">Discard edits</button></div>
     </div>`;
@@ -1259,9 +1271,9 @@ function renderJsonInspector() {
   });
   elements.inspector.querySelector("#applyJsonButton").addEventListener("click", () => {
     try {
-      const parsed = parseConfigText(editor.value);
-      replaceConfig(parsed, true);
-      toast("JSON applied.", "success");
+      const parsed = parseConfigTextWithMigration(editor.value);
+      replaceConfig(parsed.config, true, parsed.migration.report);
+      toast(parsed.migration.changed ? "JSON migrated and applied." : "JSON applied.", "success");
     } catch (error) {
       toast(error.message, "error");
     }
@@ -1394,9 +1406,18 @@ elements.importInput.addEventListener("change", async (event) => {
   event.target.value = "";
   if (!file) return;
   try {
-    const parsed = parseConfigBytes(await file.arrayBuffer());
-    replaceConfig(parsed, false);
-    toast(`${file.name} imported.`, "success");
+    const parsed = parseConfigBytesWithMigration(await file.arrayBuffer());
+    if (parsed.migration.changed) {
+      activeSection = "json";
+      workspaceView = "edit";
+    }
+    replaceConfig(parsed.config, parsed.migration.changed, parsed.migration.report);
+    toast(
+      parsed.migration.changed
+        ? `${file.name} imported and migrated to Configuration Version ${parsed.migration.targetVersion}.`
+        : `${file.name} imported.`,
+      "success"
+    );
   } catch (error) {
     toast(error.message, "error");
   }

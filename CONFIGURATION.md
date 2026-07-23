@@ -285,7 +285,11 @@ Unknown placeholders remain literal. Keep chat messages to 512 characters or les
 
 ### Configuration version
 
-PalLaw is currently unreleased and accepts only the latest version-1 format. Rules Studio and the DLL reject other version numbers instead of applying implicit migrations.
+PalLaw Configuration Version 1 was released with PalLaw software `0.1.0`. Its `PalLaw.json` contract is frozen: any later change to configuration structure, defaults, constraints, or meaning uses the next integer version. Schema descriptions, ordering, and corrections that only align validation with the released runtime may remain within the same Configuration Version.
+
+Rules Studio and the DLL migrate every released older Configuration Version forward through each adjacent version. The declared source and every intermediate result must validate before the migrated document can be used. A document without `version` is reported and treated as version 1 only when it passes the complete version-1 contract. Invalid, unknown, and newer versions are rejected; reverse migration is not supported.
+
+Rules Studio immediately replaces imported older JSON in its editor model with the current-version result and displays every migration fallback by JSON path. The DLL applies the same migration on startup and hot reload. Before replacing `PalLaw.json`, it preserves the exact source in a uniquely named immutable backup and atomically writes the fully validated current document. A failed or capability-rejected hot reload leaves both the source file and previous active rules unchanged. An already-current valid file is never rewritten merely by loading it.
 
 ## Runtime settings
 
@@ -321,4 +325,4 @@ The static Rules Studio under `site/pallaw/` imports and exports this exact form
 
 Each map's hover readout shows the coordinates displayed by Palworld in-game. Region polygons remain stored as Unreal world `[X, Y]` coordinates because those are the authoritative actor positions used by the server. Rules Studio applies each map's axis swap, scale, and offsets when positioning polygons on the bundled maps.
 
-For manual editing, you may place `PalLaw.schema.json` beside `PalLaw.json` and use an editor with JSON Schema support. The schema is a fixed editor-validation contract and is not read by the DLL, so it is intentionally omitted from the runtime package. Save atomically when possible. If a save is invalid, PalLaw logs the error and continues using the previous valid rules.
+For manual editing, you may place `PalLaw.schema.json` beside `PalLaw.json` and use an editor with JSON Schema support. That file is the latest-schema alias; immutable historical contract locations live under `site/pallaw/schemas/`, beginning with `PalLaw.v1.schema.json`. Schemas are not read by the DLL, so they are intentionally omitted from the runtime package. Save atomically when possible. If a save is invalid, PalLaw logs the error and continues using the previous valid rules.

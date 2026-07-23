@@ -8,6 +8,7 @@ import {
   parseConfigSource,
   validateRawConfigurationLimits
 } from "./config-source.js?v=1";
+import { migrateConfiguration } from "./configuration-migrations.js?v=1";
 
 export { CONFIG_LIMITS, ConfigSourceError, parseConfigSource } from "./config-source.js?v=1";
 
@@ -1003,18 +1004,50 @@ export function stringifyConfig(input) {
   return `${JSON.stringify(serializeConfig(input), null, 2)}\n`;
 }
 
-export function parseConfigText(textValue) {
-  const parsed = parseConfigSource(textValue);
-  const validation = validateConfig(parsed);
+function currentMigrationRegistry() {
+  return [{
+    version: 1,
+    validate(document) {
+      const validation = validateConfig(document);
+      if (!validation.valid) throw new Error(validation.errors.join("\n"));
+    }
+  }];
+}
+
+export function migrateConfig(input) {
+  const registry = currentMigrationRegistry();
+  if (registry.length !== CONFIG_VERSION) {
+    throw new Error(
+      `Configuration migration registry ends at version ${registry.length}, but the model declares version ${CONFIG_VERSION}.`
+    );
+  }
+  return migrateConfiguration(input, registry);
+}
+
+function parseConfigWithMigration(source) {
+  const migration = migrateConfig(parseConfigSource(source));
+  const validation = validateConfig(migration.document);
   if (!validation.valid) throw new Error(validation.errors.join("\n"));
-  return validation.config;
+  return {
+    config: validation.config,
+    migration
+  };
+}
+
+export function parseConfigTextWithMigration(textValue) {
+  return parseConfigWithMigration(textValue);
+}
+
+export function parseConfigBytesWithMigration(bytes) {
+  return parseConfigWithMigration(bytes);
+}
+
+export function parseConfigText(textValue) {
+  return parseConfigTextWithMigration(textValue).config;
 }
 
 export function parseConfigBytes(bytes) {
-  const parsed = parseConfigSource(bytes);
-  const validation = validateConfig(parsed);
-  if (!validation.valid) throw new Error(validation.errors.join("\n"));
-  return validation.config;
+  return parseConfigBytesWithMigration(bytes).config;
 }
 
 export function formatTemplate(template, values = {}) {
