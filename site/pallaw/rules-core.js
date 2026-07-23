@@ -1,4 +1,4 @@
-export const CONFIG_VERSION = 1;
+export const CONFIG_VERSION = 2;
 export const CONFIG_FILE_NAME = "PalLaw.json";
 export const SCHEMA_FILE_NAME = "PalLaw.schema.json";
 
@@ -7,10 +7,13 @@ import {
   createBoundedErrorSink,
   parseConfigSource,
   validateRawConfigurationLimits
-} from "./config-source.js?v=1";
-import { migrateConfiguration } from "./configuration-migrations.js?v=1";
+} from "./config-source.js?v=2";
+import {
+  addMigrationFallback,
+  migrateConfiguration
+} from "./configuration-migrations.js?v=2";
 
-export { CONFIG_LIMITS, ConfigSourceError, parseConfigSource } from "./config-source.js?v=1";
+export { CONFIG_LIMITS, ConfigSourceError, parseConfigSource } from "./config-source.js?v=2";
 
 export {
   MAPS,
@@ -18,7 +21,7 @@ export {
   mapFractionToWorld,
   worldToInGameMap,
   worldToMapFraction
-} from "./map-coordinates.js?v=1";
+} from "./map-coordinates.js?v=2";
 
 export const ACTORS = [
   { id: "player", label: "Player" },
@@ -148,6 +151,16 @@ export const DEFAULT_SETTINGS = Object.freeze({
   debugLogging: false
 });
 
+export const DEFAULT_DAMAGE = Object.freeze({
+  enforcementEnabled: true,
+  mode: "restrictionOnly",
+  scalingMode: "disabled",
+  experimental: Object.freeze({
+    allowGlobalPlayerDamageLease: false,
+    requireCompleteRouteCoverage: true
+  })
+});
+
 function defaultAlerts(text, enabledPresentation, briefTone = "normal") {
   return Object.fromEntries(ALERT_PRESENTATIONS.map(({ id }) => [
     id,
@@ -212,6 +225,7 @@ export function createDefaultConfig() {
   return {
     $schema: `./${SCHEMA_FILE_NAME}`,
     version: CONFIG_VERSION,
+    damage: clone(DEFAULT_DAMAGE),
     settings: clone(DEFAULT_SETTINGS),
     messages: clone(DEFAULT_MESSAGES),
     wilderness: {
@@ -404,6 +418,36 @@ export function hydrateConfig(value) {
   const config = createDefaultConfig();
   config.$schema = text(source.$schema, config.$schema);
   config.version = Number(source.version ?? CONFIG_VERSION);
+  const damage = source.damage && typeof source.damage === "object" && !Array.isArray(source.damage)
+    ? source.damage
+    : {};
+  const experimental = damage.experimental &&
+      typeof damage.experimental === "object" &&
+      !Array.isArray(damage.experimental)
+    ? damage.experimental
+    : {};
+  config.damage = {
+    enforcementEnabled: boolean(
+      damage.enforcementEnabled,
+      DEFAULT_DAMAGE.enforcementEnabled
+    ),
+    mode: ["observeOnly", "restrictionOnly", "regionalPvpExperimental"].includes(damage.mode)
+      ? damage.mode
+      : DEFAULT_DAMAGE.mode,
+    scalingMode: damage.scalingMode === "disabled"
+      ? damage.scalingMode
+      : DEFAULT_DAMAGE.scalingMode,
+    experimental: {
+      allowGlobalPlayerDamageLease: boolean(
+        experimental.allowGlobalPlayerDamageLease,
+        DEFAULT_DAMAGE.experimental.allowGlobalPlayerDamageLease
+      ),
+      requireCompleteRouteCoverage: boolean(
+        experimental.requireCompleteRouteCoverage,
+        DEFAULT_DAMAGE.experimental.requireCompleteRouteCoverage
+      )
+    }
+  };
   config.settings = { ...config.settings, ...(source.settings || {}) };
   for (const key of Object.keys(DEFAULT_SETTINGS)) {
     config.settings[key] = typeof DEFAULT_SETTINGS[key] === "boolean"
@@ -520,6 +564,21 @@ export function setQuickCombatOverride(area, source, target, value) {
   }
 }
 
+function characterOrStructureScalingRequested(input) {
+  const config = hydrateConfig(input);
+  const areas = [
+    config.wilderness,
+    ...config.regions.filter((region) => region.enabled !== false)
+  ];
+  return areas.some((area) =>
+    Object.values(effectiveCombat(area)).some((targets) =>
+      Object.values(targets).some(
+        (multiplier) => multiplier > 0 && multiplier !== 1
+      )
+    )
+  );
+}
+
 export function deriveFeatureSummary(input) {
   const config = hydrateConfig(input);
   const areas = [config.wilderness, ...config.regions.filter((region) => region.enabled !== false)];
@@ -559,12 +618,28 @@ export function deriveFeatureSummary(input) {
   }
 
   const targetFiltering = config.settings.targetFiltering !== false;
+  const damageAuthorityEnabled =
+    config.damage.enforcementEnabled && config.damage.mode !== "observeOnly";
+  const requestsRegionalPlayerDamage = enablesRegionalPlayerDamage;
   return Object.freeze({
-    enablesRegionalPlayerDamage,
-    characterPolicyNonVanilla,
-    characterPositiveScaling,
-    structurePolicyNonVanilla,
-    structurePositiveScaling,
+    requestsRegionalPlayerDamage,
+    enablesRegionalPlayerDamage:
+      damageAuthorityEnabled &&
+      config.damage.mode === "regionalPvpExperimental" &&
+      config.damage.experimental.allowGlobalPlayerDamageLease &&
+      requestsRegionalPlayerDamage,
+    characterPolicyNonVanilla:
+      damageAuthorityEnabled && characterPolicyNonVanilla,
+    characterPositiveScaling:
+      damageAuthorityEnabled &&
+      config.damage.scalingMode !== "disabled" &&
+      characterPositiveScaling,
+    structurePolicyNonVanilla:
+      damageAuthorityEnabled && structurePolicyNonVanilla,
+    structurePositiveScaling:
+      damageAuthorityEnabled &&
+      config.damage.scalingMode !== "disabled" &&
+      structurePositiveScaling,
     needsBaseCampEntryFiltering: targetFiltering && deniedBaseCampRelationship,
     needsDirectedAiFiltering: targetFiltering && deniedAiRelationship,
     needsAiResultSanitization: targetFiltering && deniedAiRelationship,
@@ -833,10 +908,45 @@ function validateRawArea(value, context, region, errors) {
   if (region && !Object.hasOwn(value, "polygon")) errors.push(`${context}.polygon is required.`);
 }
 
+function validateRawDamage(value, errors) {
+  if (!rejectUnknownKeys(
+    value,
+    new Set(["enforcementEnabled", "mode", "scalingMode", "experimental"]),
+    "damage",
+    errors
+  )) return;
+  if (Object.hasOwn(value, "enforcementEnabled") &&
+      typeof value.enforcementEnabled !== "boolean") {
+    errors.push("damage.enforcementEnabled must be true or false.");
+  }
+  if (Object.hasOwn(value, "mode") &&
+      !["observeOnly", "restrictionOnly", "regionalPvpExperimental"].includes(value.mode)) {
+    errors.push("damage.mode must be observeOnly, restrictionOnly, or regionalPvpExperimental.");
+  }
+  if (Object.hasOwn(value, "scalingMode") && value.scalingMode !== "disabled") {
+    errors.push("damage.scalingMode must be disabled in this build.");
+  }
+  if (Object.hasOwn(value, "experimental")) {
+    if (!rejectUnknownKeys(
+      value.experimental,
+      new Set(["allowGlobalPlayerDamageLease", "requireCompleteRouteCoverage"]),
+      "damage.experimental",
+      errors
+    )) return;
+    for (const key of ["allowGlobalPlayerDamageLease", "requireCompleteRouteCoverage"]) {
+      if (Object.hasOwn(value.experimental, key) &&
+          typeof value.experimental[key] !== "boolean") {
+        errors.push(`damage.experimental.${key} must be true or false.`);
+      }
+    }
+  }
+}
+
 function validateRawConfig(input, errors) {
-  if (!rejectUnknownKeys(input, new Set(["$schema", "version", "settings", "messages", "wilderness", "regions"]), "root", errors)) return;
+  if (!rejectUnknownKeys(input, new Set(["$schema", "version", "damage", "settings", "messages", "wilderness", "regions"]), "root", errors)) return;
   if (!Object.hasOwn(input, "version")) errors.push("version is required.");
   if (!Object.hasOwn(input, "wilderness")) errors.push("wilderness is required.");
+  if (Object.hasOwn(input, "damage")) validateRawDamage(input.damage, errors);
   if (Object.hasOwn(input, "settings")) {
     const allowed = new Set(Object.keys(DEFAULT_SETTINGS));
     rejectUnknownKeys(input.settings, allowed, "settings", errors);
@@ -861,6 +971,11 @@ export function validateConfig(input) {
   validateRawConfig(input, errors);
   const config = hydrateConfig(input);
   if (Number(config.version) !== CONFIG_VERSION) errors.push(`version must be ${CONFIG_VERSION}.`);
+  if (config.damage.experimental.allowGlobalPlayerDamageLease) {
+    errors.push(
+      "damage.experimental.allowGlobalPlayerDamageLease cannot be enabled: this build has no qualified complete damage-route coverage manifest."
+    );
+  }
   if (!config.wilderness.name.trim()) errors.push("wilderness.name is required.");
   if (!MODE_IDS.has(config.wilderness.mode)) errors.push("wilderness.mode must be safe, pve, or pvp.");
   validateCombat(config.wilderness.combat, "wilderness.combat", errors);
@@ -910,6 +1025,20 @@ export function validateConfig(input) {
         warnings.push(`Regions "${a.region.name}" and "${b.region.name}" may overlap. "${b.region.name}" wins because it appears later.`);
       }
     }
+  }
+
+  const damageFeatures = deriveFeatureSummary(config);
+  if (damageFeatures.requestsRegionalPlayerDamage &&
+      config.damage.mode === "restrictionOnly") {
+    warnings.push(
+      "Regional PvP rules cannot enable player damage in restrictionOnly mode because PalLaw will not change Palworld's global player-damage setting."
+    );
+  }
+  if (config.damage.scalingMode === "disabled" &&
+      (characterOrStructureScalingRequested(config))) {
+    warnings.push(
+      "Positive damage multipliers are inactive because damage.scalingMode is disabled."
+    );
   }
 
   const boundedErrors = errorSink.finalize();
@@ -982,6 +1111,7 @@ export function serializeConfig(input) {
   const result = {
     $schema: `./${SCHEMA_FILE_NAME}`,
     version: CONFIG_VERSION,
+    damage: clone(config.damage),
     settings: clone(config.settings),
     messages: compactMessages(config.messages, DEFAULT_MESSAGES, true),
     wilderness: compactArea(config.wilderness, config.messages),
@@ -1005,13 +1135,38 @@ export function stringifyConfig(input) {
 }
 
 function currentMigrationRegistry() {
-  return [{
-    version: 1,
-    validate(document) {
-      const validation = validateConfig(document);
-      if (!validation.valid) throw new Error(validation.errors.join("\n"));
+  const migrateV1ToV2 = (document, report) => {
+    document.damage = clone(DEFAULT_DAMAGE);
+    addMigrationFallback(report, {
+      fromVersion: 1,
+      toVersion: 2,
+      path: "$.damage.mode",
+      message: "Existing regions were preserved, but damage authority now defaults to restrictionOnly and will not enable Palworld's global player-damage setting."
+    });
+  };
+  return [
+    {
+      version: 1,
+      validate(document) {
+        if (Object.hasOwn(document, "damage")) {
+          throw new Error("Configuration Version 1 does not allow the damage object.");
+        }
+        const candidate = clone(document);
+        migrateV1ToV2(candidate, []);
+        candidate.version = 2;
+        const validation = validateConfig(candidate);
+        if (!validation.valid) throw new Error(validation.errors.join("\n"));
+      },
+      migrateToNext: migrateV1ToV2
+    },
+    {
+      version: 2,
+      validate(document) {
+        const validation = validateConfig(document);
+        if (!validation.valid) throw new Error(validation.errors.join("\n"));
+      }
     }
-  }];
+  ];
 }
 
 export function migrateConfig(input) {

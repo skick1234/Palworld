@@ -24,10 +24,10 @@ import {
   validateConfig,
   worldToInGameMap,
   worldToMapFraction
-} from "./rules-core.js?v=1";
-import { formatMigrationReport } from "./configuration-migrations.js?v=1";
-import { createMessageEditor } from "./message-editor.js?v=1";
-import { createDocumentStore } from "./document-store.js?v=1";
+} from "./rules-core.js?v=2";
+import { formatMigrationReport } from "./configuration-migrations.js?v=2";
+import { createMessageEditor } from "./message-editor.js?v=2";
+import { createDocumentStore } from "./document-store.js?v=2";
 
 const STORAGE_KEY = "pallaw.studio.v1";
 

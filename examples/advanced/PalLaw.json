@@ -1,6 +1,15 @@
 {
   "$schema": "../../site/pallaw/PalLaw.schema.json",
-  "version": 1,
+  "version": 2,
+  "damage": {
+    "enforcementEnabled": true,
+    "mode": "restrictionOnly",
+    "scalingMode": "disabled",
+    "experimental": {
+      "allowGlobalPlayerDamageLease": false,
+      "requireCompleteRouteCoverage": true
+    }
+  },
   "settings": {
     "hotReload": true,
     "hotReloadSeconds": 1.0,
