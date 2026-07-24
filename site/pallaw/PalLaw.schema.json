@@ -2,14 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "PalLaw.schema.json",
   "title": "PalLaw configuration",
-  "description": "PalLaw Configuration Version 2. Stable damage enforcement is restriction-only and never enables Palworld's global player-damage setting. Files are valid UTF-8 JSON, at most 4 MiB including an optional BOM, with no duplicate object keys and a maximum container depth of 32.",
+  "description": "PalLaw Configuration Version 1. Files are valid UTF-8 JSON, at most 4 MiB including an optional BOM, with no duplicate object keys and a maximum container depth of 32.",
   "type": "object",
   "additionalProperties": false,
   "required": ["version", "wilderness"],
   "properties": {
     "$schema": { "type": "string" },
-    "version": { "const": 2 },
-    "damage": { "$ref": "#/$defs/damage" },
+    "version": { "const": 1 },
     "settings": { "$ref": "#/$defs/settings" },
     "messages": { "$ref": "#/$defs/globalMessages" },
     "wilderness": { "$ref": "#/$defs/wilderness" },
@@ -48,37 +47,6 @@
           "items": { "$ref": "#/$defs/sourceActor" }
         }
       ]
-    },
-    "damage": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "enforcementEnabled": { "type": "boolean", "default": true },
-        "mode": {
-          "type": "string",
-          "enum": ["observeOnly", "restrictionOnly", "regionalPvpExperimental"],
-          "default": "restrictionOnly",
-          "description": "observeOnly records evidence without mutation. restrictionOnly can deny verified damage Palworld already emits and never acquires the global player-damage lease. regionalPvpExperimental remains unavailable until complete route coverage is qualified."
-        },
-        "scalingMode": {
-          "const": "disabled",
-          "description": "Positive damage scaling is disabled until route-specific damage-field mutation is qualified."
-        },
-        "experimental": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "allowGlobalPlayerDamageLease": {
-              "const": false,
-              "description": "This build has no qualified complete damage-route coverage manifest, so the global lease cannot be enabled."
-            },
-            "requireCompleteRouteCoverage": {
-              "const": true,
-              "description": "Experimental regional PvP must require complete authoritative route coverage."
-            }
-          }
-        }
-      }
     },
     "targetSelection": {
       "oneOf": [

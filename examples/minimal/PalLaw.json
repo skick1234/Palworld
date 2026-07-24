@@ -1,10 +1,6 @@
 {
   "$schema": "../../site/pallaw/PalLaw.schema.json",
-  "version": 2,
-  "damage": {
-    "mode": "restrictionOnly",
-    "scalingMode": "disabled"
-  },
+  "version": 1,
   "wilderness": {
     "name": "Wilderness",
     "mode": "pve"
