@@ -53,16 +53,30 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "enforcementEnabled": {
-          "type": "boolean",
-          "default": false,
-          "description": "Evaluate and neutralize denied character and map-object damage. When false, all damage remains on Palworld's vanilla path."
-        },
+        "enforcementEnabled": { "type": "boolean", "default": true },
         "mode": {
           "type": "string",
-          "enum": ["observeOnly", "restrictionOnly"],
+          "enum": ["observeOnly", "restrictionOnly", "regionalPvpExperimental"],
           "default": "restrictionOnly",
-          "description": "observeOnly records evidence without mutation. restrictionOnly can deny verified damage Palworld already emits and never changes Palworld's global player-damage setting."
+          "description": "observeOnly records evidence without mutation. restrictionOnly can deny verified damage Palworld already emits and never acquires the global player-damage lease. regionalPvpExperimental remains unavailable until complete route coverage is qualified."
+        },
+        "scalingMode": {
+          "const": "disabled",
+          "description": "Positive damage scaling is disabled until route-specific damage-field mutation is qualified."
+        },
+        "experimental": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "allowGlobalPlayerDamageLease": {
+              "const": false,
+              "description": "This build has no qualified complete damage-route coverage manifest, so the global lease cannot be enabled."
+            },
+            "requireCompleteRouteCoverage": {
+              "const": true,
+              "description": "Experimental regional PvP must require complete authoritative route coverage."
+            }
+          }
         }
       }
     },
@@ -83,7 +97,7 @@
       "properties": {
         "hotReload": { "type": "boolean", "default": true },
         "hotReloadSeconds": { "type": "number", "minimum": 0.1, "maximum": 60, "default": 1 },
-        "targetFiltering": { "type": "boolean", "default": false },
+        "targetFiltering": { "type": "boolean", "default": true },
         "targetSweepSeconds": { "type": "number", "minimum": 0.05, "maximum": 10, "default": 0.5 },
         "worldRules": { "type": "boolean", "default": true },
         "adminBypass": { "type": "boolean", "default": true },
@@ -231,13 +245,18 @@
     "combatEntry": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["source", "target", "allow"],
+      "required": ["source", "target"],
       "properties": {
         "source": { "$ref": "#/$defs/sourceSelection" },
         "target": { "$ref": "#/$defs/targetSelection" },
         "allow": { "type": "boolean" },
+        "damage": { "type": "number", "minimum": 0, "maximum": 100 },
         "bidirectional": { "type": "boolean", "default": false }
-      }
+      },
+      "oneOf": [
+        { "required": ["allow"], "not": { "required": ["damage"] } },
+        { "required": ["damage"], "not": { "required": ["allow"] } }
+      ]
     },
     "combat": {
       "type": "array",

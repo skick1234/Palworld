@@ -2,13 +2,18 @@
   "$schema": "../../site/pallaw/PalLaw.schema.json",
   "version": 2,
   "damage": {
-    "enforcementEnabled": false,
-    "mode": "restrictionOnly"
+    "enforcementEnabled": true,
+    "mode": "restrictionOnly",
+    "scalingMode": "disabled",
+    "experimental": {
+      "allowGlobalPlayerDamageLease": false,
+      "requireCompleteRouteCoverage": true
+    }
   },
   "settings": {
     "hotReload": true,
     "hotReloadSeconds": 1.0,
-    "targetFiltering": false,
+    "targetFiltering": true,
     "targetSweepSeconds": 0.5,
     "worldRules": true,
     "adminBypass": true,
@@ -44,12 +49,12 @@
       "enabled": true,
       "chat": {
         "enabled": false,
-        "text": "Open combat policy in {region}; PalLaw does not enable server player damage."
+        "text": "Warning: PvP is enabled in {region}."
       },
       "alerts": {
         "brief": {
           "enabled": true,
-          "text": "Open combat policy - server setting unchanged.",
+          "text": "PvP is active in {region}.",
           "tone": "negative"
         }
       }
@@ -91,7 +96,7 @@
   },
   "regions": [
     {
-      "name": "Open Combat Policy",
+      "name": "Arena Island",
       "enabled": true,
       "mode": "pvp",
       "minimumLevel": 20,
@@ -105,7 +110,7 @@
       ],
       "messages": {
         "regionChanged": {
-          "chat": "Entered {region}. This preset does not enable Palworld player damage."
+          "chat": "Entered {region}. Combat between player groups is allowed."
         }
       }
     },

@@ -2,13 +2,8 @@
   "$schema": "../../site/pallaw/PalLaw.schema.json",
   "version": 2,
   "damage": {
-    "enforcementEnabled": false,
-    "mode": "restrictionOnly"
-  },
-  "settings": {
-    "targetFiltering": false,
-    "worldRules": true,
-    "debugLogging": false
+    "mode": "restrictionOnly",
+    "scalingMode": "disabled"
   },
   "wilderness": {
     "name": "Wilderness",
@@ -16,9 +11,8 @@
   },
   "regions": [
     {
-      "name": "Level 70 Zone",
-      "mode": "pve",
-      "minimumLevel": 70,
+      "name": "Arena Island",
+      "mode": "pvp",
       "polygon": [
         [-240000, 90000],
         [-210000, 125000],

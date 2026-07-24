@@ -84,7 +84,7 @@ export const MODES = [
     id: "pvp",
     label: "PvP",
     color: "#F43F5E",
-    description: "An open combat-policy preset. It does not enable Palworld player damage when the server has player damage disabled."
+    description: "All recognized combat relationships are allowed unless an override denies or scales one."
   }
 ];
 
@@ -142,7 +142,7 @@ export const ALERT_TONES = [
 export const DEFAULT_SETTINGS = Object.freeze({
   hotReload: true,
   hotReloadSeconds: 1,
-  targetFiltering: false,
+  targetFiltering: true,
   targetSweepSeconds: 0.5,
   worldRules: true,
   adminBypass: true,
@@ -152,8 +152,13 @@ export const DEFAULT_SETTINGS = Object.freeze({
 });
 
 export const DEFAULT_DAMAGE = Object.freeze({
-  enforcementEnabled: false,
-  mode: "restrictionOnly"
+  enforcementEnabled: true,
+  mode: "restrictionOnly",
+  scalingMode: "disabled",
+  experimental: Object.freeze({
+    allowGlobalPlayerDamageLease: false,
+    requireCompleteRouteCoverage: true
+  })
 });
 
 function defaultAlerts(text, enabledPresentation, briefTone = "normal") {
@@ -180,8 +185,8 @@ export const DEFAULT_MESSAGES = Object.freeze({
   pvpWarning: {
     enabled: true,
     cooldownSeconds: 0,
-    chat: { enabled: false, text: "Open combat policy in {region}; PalLaw does not enable server player damage." },
-    alerts: defaultAlerts("OPEN COMBAT POLICY - {region}", "brief", "negative")
+    chat: { enabled: false, text: "Warning: PvP is enabled in {region}." },
+    alerts: defaultAlerts("PvP ENABLED - {region}", "brief", "negative")
   },
   actionDenied: {
     enabled: true,
@@ -360,6 +365,7 @@ function normalizeCombat(value) {
       bidirectional: boolean(entry?.bidirectional, false)
     };
     if (typeof entry?.allow === "boolean") result.allow = entry.allow;
+    if (Number.isFinite(Number(entry?.damage))) result.damage = Number(entry.damage);
     return result;
   });
 }
@@ -415,14 +421,32 @@ export function hydrateConfig(value) {
   const damage = source.damage && typeof source.damage === "object" && !Array.isArray(source.damage)
     ? source.damage
     : {};
+  const experimental = damage.experimental &&
+      typeof damage.experimental === "object" &&
+      !Array.isArray(damage.experimental)
+    ? damage.experimental
+    : {};
   config.damage = {
     enforcementEnabled: boolean(
       damage.enforcementEnabled,
       DEFAULT_DAMAGE.enforcementEnabled
     ),
-    mode: ["observeOnly", "restrictionOnly"].includes(damage.mode)
+    mode: ["observeOnly", "restrictionOnly", "regionalPvpExperimental"].includes(damage.mode)
       ? damage.mode
-      : DEFAULT_DAMAGE.mode
+      : DEFAULT_DAMAGE.mode,
+    scalingMode: damage.scalingMode === "disabled"
+      ? damage.scalingMode
+      : DEFAULT_DAMAGE.scalingMode,
+    experimental: {
+      allowGlobalPlayerDamageLease: boolean(
+        experimental.allowGlobalPlayerDamageLease,
+        DEFAULT_DAMAGE.experimental.allowGlobalPlayerDamageLease
+      ),
+      requireCompleteRouteCoverage: boolean(
+        experimental.requireCompleteRouteCoverage,
+        DEFAULT_DAMAGE.experimental.requireCompleteRouteCoverage
+      )
+    }
   };
   config.settings = { ...config.settings, ...(source.settings || {}) };
   for (const key of Object.keys(DEFAULT_SETTINGS)) {
@@ -435,13 +459,6 @@ export function hydrateConfig(value) {
   config.regions = Array.isArray(source.regions)
     ? source.regions.map(normalizeRegion)
     : [];
-  return config;
-}
-
-export function applyLevelOnlyProfile(config) {
-  config.damage.enforcementEnabled = false;
-  config.settings.targetFiltering = false;
-  config.settings.worldRules = true;
   return config;
 }
 
@@ -482,7 +499,7 @@ export function effectiveCombat(area) {
   for (const entry of area?.combat || []) {
     const sources = normalizeSelection(entry.source);
     const targets = normalizeSelection(entry.target);
-    const scale = entry.allow ? 1 : 0;
+    const scale = Object.hasOwn(entry, "damage") ? Number(entry.damage) : (entry.allow ? 1 : 0);
     for (const source of sources) {
       if (!matrix[source]) continue;
       for (const target of targets) {
@@ -547,6 +564,21 @@ export function setQuickCombatOverride(area, source, target, value) {
   }
 }
 
+function characterOrStructureScalingRequested(input) {
+  const config = hydrateConfig(input);
+  const areas = [
+    config.wilderness,
+    ...config.regions.filter((region) => region.enabled !== false)
+  ];
+  return areas.some((area) =>
+    Object.values(effectiveCombat(area)).some((targets) =>
+      Object.values(targets).some(
+        (multiplier) => multiplier > 0 && multiplier !== 1
+      )
+    )
+  );
+}
+
 export function deriveFeatureSummary(input) {
   const config = hydrateConfig(input);
   const areas = [config.wilderness, ...config.regions.filter((region) => region.enabled !== false)];
@@ -554,12 +586,13 @@ export function deriveFeatureSummary(input) {
   const aiSources = new Set(["basePal", "wildPal", "npc"]);
   let enablesRegionalPlayerDamage = false;
   let characterPolicyNonVanilla = false;
+  let characterPositiveScaling = false;
   let structurePolicyNonVanilla = false;
+  let structurePositiveScaling = false;
   let deniedBaseCampRelationship = false;
   let deniedAiRelationship = false;
   let needsWorldActionAuthorization = false;
   let needsPlayerActionEnforcement = false;
-  let needsFastTravelAuthorization = false;
   let needsDecayEnforcement = false;
 
   for (const area of areas) {
@@ -568,9 +601,11 @@ export function deriveFeatureSummary(input) {
       for (const [target, multiplier] of Object.entries(targets)) {
         if (target === "structure" || target === "environment") {
           structurePolicyNonVanilla ||= multiplier !== 1;
+          structurePositiveScaling ||= multiplier > 0 && multiplier !== 1;
           continue;
         }
         characterPolicyNonVanilla ||= multiplier !== 1;
+        characterPositiveScaling ||= multiplier > 0 && multiplier !== 1;
         enablesRegionalPlayerDamage ||= owned.has(source) && owned.has(target) && multiplier > 0;
         deniedBaseCampRelationship ||= source === "basePal" && ["player", "partnerPal"].includes(target) && multiplier <= 0;
         deniedAiRelationship ||= aiSources.has(source) && multiplier <= 0;
@@ -578,36 +613,40 @@ export function deriveFeatureSummary(input) {
     }
     const actions = effectiveActions(area);
     needsWorldActionAuthorization ||= ["build", "dismantle", "editSign", "editLock"].some((action) => actions[action] === false);
-    needsPlayerActionEnforcement ||= area.minimumLevel != null ||
-      ["ride", "fly"].some((action) => actions[action] === false);
-    needsFastTravelAuthorization ||= area.minimumLevel != null ||
-      ["fastTravelDeparture", "fastTravelArrival"].some((action) => actions[action] === false);
+    needsPlayerActionEnforcement ||= ["ride", "fly"].some((action) => actions[action] === false);
     needsDecayEnforcement ||= actions.decay === false;
   }
 
   const targetFiltering = config.settings.targetFiltering !== false;
   const damageAuthorityEnabled =
     config.damage.enforcementEnabled && config.damage.mode !== "observeOnly";
-  const worldRulesEnabled = config.settings.worldRules !== false;
   const requestsRegionalPlayerDamage = enablesRegionalPlayerDamage;
   return Object.freeze({
     requestsRegionalPlayerDamage,
+    enablesRegionalPlayerDamage:
+      damageAuthorityEnabled &&
+      config.damage.mode === "regionalPvpExperimental" &&
+      config.damage.experimental.allowGlobalPlayerDamageLease &&
+      requestsRegionalPlayerDamage,
     characterPolicyNonVanilla:
       damageAuthorityEnabled && characterPolicyNonVanilla,
+    characterPositiveScaling:
+      damageAuthorityEnabled &&
+      config.damage.scalingMode !== "disabled" &&
+      characterPositiveScaling,
     structurePolicyNonVanilla:
       damageAuthorityEnabled && structurePolicyNonVanilla,
+    structurePositiveScaling:
+      damageAuthorityEnabled &&
+      config.damage.scalingMode !== "disabled" &&
+      structurePositiveScaling,
     needsBaseCampEntryFiltering: targetFiltering && deniedBaseCampRelationship,
     needsDirectedAiFiltering: targetFiltering && deniedAiRelationship,
     needsAiResultSanitization: targetFiltering && deniedAiRelationship,
     needsRetainedTargetRecovery: targetFiltering && deniedAiRelationship,
-    needsWorldActionAuthorization:
-      worldRulesEnabled && needsWorldActionAuthorization,
-    needsPlayerActionEnforcement:
-      worldRulesEnabled && needsPlayerActionEnforcement,
-    needsFastTravelAuthorization:
-      worldRulesEnabled && needsFastTravelAuthorization,
-    needsDecayEnforcement:
-      worldRulesEnabled && needsDecayEnforcement,
+    needsWorldActionAuthorization,
+    needsPlayerActionEnforcement,
+    needsDecayEnforcement,
     hotReloadEnabled: config.settings.hotReload !== false,
     notificationsEnabled: config.messages.enabled !== false,
     profilingEnabled: false
@@ -743,9 +782,10 @@ function validateCombat(entries, context, errors) {
     const targets = normalizeSelection(entry?.target);
     if (!sources.length || sources.some((actor) => !SOURCE_ACTOR_IDS.has(actor))) errors.push(`${prefix}.source contains an unknown source actor.`);
     if (!targets.length || targets.some((actor) => !ACTOR_IDS.has(actor))) errors.push(`${prefix}.target contains an unknown target actor.`);
-    if (typeof entry?.allow !== "boolean") {
-      errors.push(`${prefix}.allow must be true or false.`);
-    }
+    const hasAllow = typeof entry?.allow === "boolean";
+    const hasDamage = Number.isFinite(Number(entry?.damage));
+    if (hasAllow === hasDamage) errors.push(`${prefix} must use exactly one of allow or damage.`);
+    if (hasDamage && (Number(entry.damage) < 0 || Number(entry.damage) > 100)) errors.push(`${prefix}.damage must be between 0 and 100.`);
   });
 }
 
@@ -848,14 +888,9 @@ function validateRawCombat(value, context, errors) {
     if (!rejectUnknownKeys(entry, new Set(["source", "target", "allow", "damage", "bidirectional"]), prefix, errors)) return;
     if (!Object.hasOwn(entry, "source")) errors.push(`${prefix}.source is required.`);
     if (!Object.hasOwn(entry, "target")) errors.push(`${prefix}.target is required.`);
-    if (Object.hasOwn(entry, "damage")) {
-      errors.push(`${prefix}.damage is not supported in PalLaw 0.2.0; use allow=true or allow=false.`);
-    }
-    if (!Object.hasOwn(entry, "allow")) {
-      errors.push(`${prefix}.allow is required.`);
-    } else if (typeof entry.allow !== "boolean") {
-      errors.push(`${prefix}.allow must be true or false.`);
-    }
+    const hasAllow = Object.hasOwn(entry, "allow");
+    const hasDamage = Object.hasOwn(entry, "damage");
+    if (hasAllow === hasDamage) errors.push(`${prefix} must use exactly one of allow or damage.`);
   });
 }
 
@@ -876,7 +911,7 @@ function validateRawArea(value, context, region, errors) {
 function validateRawDamage(value, errors) {
   if (!rejectUnknownKeys(
     value,
-    new Set(["enforcementEnabled", "mode"]),
+    new Set(["enforcementEnabled", "mode", "scalingMode", "experimental"]),
     "damage",
     errors
   )) return;
@@ -885,8 +920,25 @@ function validateRawDamage(value, errors) {
     errors.push("damage.enforcementEnabled must be true or false.");
   }
   if (Object.hasOwn(value, "mode") &&
-      !["observeOnly", "restrictionOnly"].includes(value.mode)) {
-    errors.push("damage.mode must be observeOnly or restrictionOnly.");
+      !["observeOnly", "restrictionOnly", "regionalPvpExperimental"].includes(value.mode)) {
+    errors.push("damage.mode must be observeOnly, restrictionOnly, or regionalPvpExperimental.");
+  }
+  if (Object.hasOwn(value, "scalingMode") && value.scalingMode !== "disabled") {
+    errors.push("damage.scalingMode must be disabled in this build.");
+  }
+  if (Object.hasOwn(value, "experimental")) {
+    if (!rejectUnknownKeys(
+      value.experimental,
+      new Set(["allowGlobalPlayerDamageLease", "requireCompleteRouteCoverage"]),
+      "damage.experimental",
+      errors
+    )) return;
+    for (const key of ["allowGlobalPlayerDamageLease", "requireCompleteRouteCoverage"]) {
+      if (Object.hasOwn(value.experimental, key) &&
+          typeof value.experimental[key] !== "boolean") {
+        errors.push(`damage.experimental.${key} must be true or false.`);
+      }
+    }
   }
 }
 
@@ -919,6 +971,11 @@ export function validateConfig(input) {
   validateRawConfig(input, errors);
   const config = hydrateConfig(input);
   if (Number(config.version) !== CONFIG_VERSION) errors.push(`version must be ${CONFIG_VERSION}.`);
+  if (config.damage.experimental.allowGlobalPlayerDamageLease) {
+    errors.push(
+      "damage.experimental.allowGlobalPlayerDamageLease cannot be enabled: this build has no qualified complete damage-route coverage manifest."
+    );
+  }
   if (!config.wilderness.name.trim()) errors.push("wilderness.name is required.");
   if (!MODE_IDS.has(config.wilderness.mode)) errors.push("wilderness.mode must be safe, pve, or pvp.");
   validateCombat(config.wilderness.combat, "wilderness.combat", errors);
@@ -977,6 +1034,13 @@ export function validateConfig(input) {
       "Regional PvP rules cannot enable player damage in restrictionOnly mode because PalLaw will not change Palworld's global player-damage setting."
     );
   }
+  if (config.damage.scalingMode === "disabled" &&
+      (characterOrStructureScalingRequested(config))) {
+    warnings.push(
+      "Positive damage multipliers are inactive because damage.scalingMode is disabled."
+    );
+  }
+
   const boundedErrors = errorSink.finalize();
   return {
     config,
@@ -1071,44 +1135,14 @@ export function stringifyConfig(input) {
 }
 
 function currentMigrationRegistry() {
-  const migrateCombat = (area, path, report) => {
-    if (!area || !Array.isArray(area.combat)) return;
-    area.combat.forEach((entry, index) => {
-      if (!entry || typeof entry !== "object" || Array.isArray(entry) ||
-          !Object.hasOwn(entry, "damage")) {
-        return;
-      }
-      if (Object.hasOwn(entry, "allow")) {
-        throw new Error(`${path}.combat[${index}] must use exactly one of allow or damage.`);
-      }
-      if (typeof entry.damage !== "number" || !Number.isFinite(entry.damage) ||
-          entry.damage < 0 || entry.damage > 100) {
-        throw new Error(`${path}.combat[${index}].damage must be between 0 and 100.`);
-      }
-      entry.allow = entry.damage > 0;
-      delete entry.damage;
-      addMigrationFallback(report, {
-        fromVersion: 1,
-        toVersion: 2,
-        path: `${path}.combat[${index}].damage`,
-        message: "PalLaw 0.2.0 removed positive damage scaling; damage <= 0 became allow=false and damage > 0 became allow=true."
-      });
-    });
-  };
   const migrateV1ToV2 = (document, report) => {
     document.damage = clone(DEFAULT_DAMAGE);
     addMigrationFallback(report, {
       fromVersion: 1,
       toVersion: 2,
-      path: "$.damage.enforcementEnabled",
-      message: "PalLaw 0.2.0 migrated combat enforcement to disabled. Review the new restriction-only behavior and explicitly enable it after private-server testing."
+      path: "$.damage.mode",
+      message: "Existing regions were preserved, but damage authority now defaults to restrictionOnly and will not enable Palworld's global player-damage setting."
     });
-    migrateCombat(document.wilderness, "$.wilderness", report);
-    if (Array.isArray(document.regions)) {
-      document.regions.forEach((region, index) => {
-        migrateCombat(region, `$.regions[${index}]`, report);
-      });
-    }
   };
   return [
     {
