@@ -9,7 +9,7 @@
   "properties": {
     "$schema": { "type": "string" },
     "version": { "const": 2 },
-    "damage": { "$ref": "#/$defs/damage" },
+    "regionalCombat": { "$ref": "#/$defs/regionalCombat" },
     "settings": { "$ref": "#/$defs/settings" },
     "messages": { "$ref": "#/$defs/globalMessages" },
     "wilderness": { "$ref": "#/$defs/wilderness" },
@@ -49,14 +49,14 @@
         }
       ]
     },
-    "damage": {
+    "regionalCombat": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "enforcementEnabled": {
+        "enabled": {
           "type": "boolean",
           "default": true,
-          "description": "When true, PalLaw manages combat, AI targeting, and the Palworld player-damage setting so configured PvP regions work even when the world starts with player damage disabled. When false, PalLaw does not observe, filter, or alter combat and restores vanilla behavior."
+          "description": "When true, PalLaw manages regional final-damage policy and the Palworld player-damage setting so configured PvP regions work even when the world starts with player damage disabled. Targeting and attack progression remain vanilla in PalLaw 0.2.0. When false, PalLaw leaves all combat vanilla and suppresses unresolved-combat warnings."
         }
       }
     },
@@ -77,7 +77,6 @@
       "properties": {
         "hotReload": { "type": "boolean", "default": true },
         "hotReloadSeconds": { "type": "number", "minimum": 0.1, "maximum": 60, "default": 1 },
-        "targetSweepSeconds": { "type": "number", "minimum": 0.05, "maximum": 10, "default": 0.5 },
         "worldRules": { "type": "boolean", "default": true },
         "adminBypass": { "type": "boolean", "default": true },
         "playerSweepSeconds": { "type": "number", "minimum": 0.05, "maximum": 10, "default": 0.25 },

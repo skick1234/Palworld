@@ -1,8 +1,8 @@
 {
   "$schema": "../../site/pallaw/PalLaw.schema.json",
   "version": 2,
-  "damage": {
-    "enforcementEnabled": false
+  "regionalCombat": {
+    "enabled": false
   },
   "settings": {
     "worldRules": true,

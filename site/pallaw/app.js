@@ -5,7 +5,6 @@ import {
   MAPS,
   MESSAGE_EVENTS,
   MODES,
-  applyLevelOnlyProfile,
   areaAt,
   clone,
   createDefaultConfig,
@@ -879,7 +878,7 @@ function renderSettingsSidebar() {
     <div class="panel-heading"><div><h2>Runtime settings</h2><p>Safe defaults are supplied; most servers only need regions and modes.</p></div></div>
     <div class="list-stack">
       <div class="region-card"><div class="region-card-top"><span class="region-card-title">Hot reload</span><span class="badge ${config.settings.hotReload ? "pve" : ""}">${config.settings.hotReload ? "On" : "Off"}</span></div><div class="region-meta"><span>Every ${config.settings.hotReloadSeconds}s</span></div></div>
-      <div class="region-card"><div class="region-card-top"><span class="region-card-title">Regional combat authority</span><span class="badge ${config.damage.enforcementEnabled ? "pve" : ""}">${config.damage.enforcementEnabled ? "On" : "Off"}</span></div><div class="region-meta"><span>${config.damage.enforcementEnabled ? "PalLaw manages combat and regional PvP" : "All combat remains vanilla"}</span></div></div>
+      <div class="region-card"><div class="region-card-top"><span class="region-card-title">Regional combat authority</span><span class="badge ${config.regionalCombat.enabled ? "pve" : ""}">${config.regionalCombat.enabled ? "On" : "Off"}</span></div><div class="region-meta"><span>${config.regionalCombat.enabled ? "PalLaw manages regional final damage and regional PvP" : "All combat remains vanilla"}</span></div></div>
       <div class="region-card"><div class="region-card-top"><span class="region-card-title">World actions</span><span class="badge ${config.settings.worldRules ? "pve" : ""}">${config.settings.worldRules ? "On" : "Off"}</span></div><div class="region-meta"><span>${config.settings.adminBypass ? "Admins bypass restrictions" : "Admins follow restrictions"}</span></div></div>
     </div>`;
 }
@@ -1015,8 +1014,8 @@ function bindActions(container, areaGetter) {
   });
 }
 
-function combatPolicyLabel(multiplier) {
-  return multiplier > 0 ? "Allowed" : "Denied";
+function combatPolicyLabel(allowed) {
+  return allowed ? "Allowed" : "Denied";
 }
 
 function renderMapObjectRules(area) {
@@ -1050,7 +1049,7 @@ function bindMapObjectRules(container, areaGetter) {
 }
 
 function renderRules(area) {
-  const combatInactive = !config.damage.enforcementEnabled;
+  const combatInactive = !config.regionalCombat.enabled;
   return `<div class="rules-stack">
     ${combatInactive ? '<p class="help">Combat rules are currently inactive. Level and world-action rules remain enabled.</p>' : ""}
     <div class="section-card rules-actions">
@@ -1214,8 +1213,7 @@ function renderMessagesInspector() {
 const SETTING_DEFINITIONS = [
   { group: "Configuration", id: "hotReload", label: "Hot reload", description: "Watch PalLaw.json and automatically apply valid changes.", type: "boolean" },
   { group: "Configuration", id: "hotReloadSeconds", label: "Reload interval", description: "Seconds between file timestamp checks.", type: "number", min: 0.1, max: 60, step: 0.1 },
-  { group: "Enforcement", scope: "damage", id: "enforcementEnabled", label: "Regional combat authority", description: "When enabled, PalLaw manages combat, AI targeting, and the Palworld player-damage setting so PvP regions work on a PvP-disabled world. Turn this off for fully vanilla combat with level and action rules only.", type: "boolean" },
-  { group: "Enforcement", id: "targetSweepSeconds", label: "Combat target sweep interval", description: "Seconds between stale denied-target cleanup passes while regional combat authority is enabled.", type: "number", min: 0.05, max: 10, step: 0.05 },
+  { group: "Enforcement", scope: "regionalCombat", id: "enabled", label: "Regional combat authority", description: "When enabled, PalLaw manages regional final damage and the Palworld player-damage setting so PvP regions work on a PvP-disabled world. Targeting and attack progression remain vanilla in PalLaw 0.2.0.", type: "boolean" },
   { group: "Enforcement", id: "worldRules", label: "World action rules", description: "Enforce build, dismantle, riding, flying, editing, decay, and level restrictions.", type: "boolean" },
   { group: "Enforcement", id: "adminBypass", label: "Administrator bypass", description: "Allow administrators to bypass action and level restrictions.", type: "boolean" },
   { group: "Player tracking", id: "playerSweepSeconds", label: "Player sweep interval", description: "Seconds between location, region, mount, and level checks.", type: "number", min: 0.05, max: 10, step: 0.05 },
@@ -1225,23 +1223,19 @@ const SETTING_DEFINITIONS = [
 
 function renderSettingsInspector() {
   const groups = [...new Set(SETTING_DEFINITIONS.map((setting) => setting.group))];
-  const settingValue = (setting) => setting.scope === "damage"
-    ? config.damage[setting.id]
+  const settingValue = (setting) => setting.scope === "regionalCombat"
+    ? config.regionalCombat[setting.id]
     : config.settings[setting.id];
   elements.inspector.innerHTML = `
     <div class="inspector-header"><h2>Server behavior</h2><p>The defaults balance responsive enforcement with dedicated-server cost.</p></div>
-    <div class="code-actions"><button id="levelOnlyPresetButton" type="button" class="button ghost">Use level/action-only profile</button></div>
     <div class="settings-groups">${groups.map((group) => `<section class="settings-group"><h3>${escapeHtml(group)}</h3><div>${SETTING_DEFINITIONS.filter((setting) => setting.group === group).map((setting) => setting.type === "boolean" ? `
       <div class="setting-row"><div class="checkbox-copy"><strong>${escapeHtml(setting.label)}</strong><span>${escapeHtml(setting.description)}</span></div><label class="switch"><input data-setting-id="${setting.id}" type="checkbox" ${settingValue(setting) ? "checked" : ""}><span class="switch-track"></span></label></div>` : `
       <label class="setting-row setting-number"><div class="checkbox-copy"><strong>${escapeHtml(setting.label)}</strong><span>${escapeHtml(setting.description)}</span></div><input data-setting-id="${setting.id}" type="number" min="${setting.min}" max="${setting.max}" step="${setting.step}" value="${settingValue(setting)}"></label>`).join("")}</div></section>`).join("")}</div>`;
-  elements.inspector.querySelector("#levelOnlyPresetButton").addEventListener("click", () => commit(() => {
-    applyLevelOnlyProfile(config);
-  }));
   elements.inspector.querySelectorAll("[data-setting-id]").forEach((control) => {
     control.addEventListener("change", () => commit(() => {
       const definition = SETTING_DEFINITIONS.find((entry) => entry.id === control.dataset.settingId);
-      const target = definition.scope === "damage"
-        ? config.damage
+      const target = definition.scope === "regionalCombat"
+        ? config.regionalCombat
         : config.settings;
       target[definition.id] = definition.type === "boolean"
         ? control.checked

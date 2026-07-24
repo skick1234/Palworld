@@ -18,8 +18,8 @@ Most servers only need a wilderness mode and a list of named regions. Advanced a
 {
   "$schema": "./PalLaw.schema.json",
   "version": 2,
-  "damage": {
-    "enforcementEnabled": false
+  "regionalCombat": {
+    "enabled": false
   },
   "settings": {
     "worldRules": true,
@@ -47,9 +47,10 @@ Most servers only need a wilderness mode and a list of named regions. Advanced a
 
 This is the level/action-only profile. Global callbacks remain installed for
 minimum-level, fast-travel, mount, build, and other world rules, but damage
-callbacks return before PalLaw observation, mutation, emergency-gate, or
-capability-health processing. Set `damage.enforcementEnabled` to `true` to make
-PalLaw manage damage, combat targeting, and regional PvP. When a configured PvP
+callbacks return before PalLaw final-damage, emergency-gate, or runtime-health
+processing. Set `regionalCombat.enabled` to `true` to make PalLaw manage
+regional final damage and regional PvP. Targeting and attack progression remain
+vanilla in PalLaw 0.2.0. When a configured PvP
 area needs player damage, PalLaw transactionally enables the required Palworld
 setting and restores its original value when combat authority is disabled,
 released, or unloaded.
@@ -58,7 +59,7 @@ released, or unloaded.
 
 - `$schema`: optional relative path used by editors.
 - `version`: required and currently `2`.
-- `damage`: optional master combat-authority control. It defaults to enabled.
+- `regionalCombat`: optional master combat-authority control. It defaults to enabled.
 - `settings`: optional runtime tuning.
 - `messages`: optional global player-message defaults.
 - `wilderness`: required named Wilderness.
@@ -117,13 +118,17 @@ Combat between player groups is denied. Environmental combat remains active, so 
 ### `pvp`
 
 All recognized combat relationships use an open allow policy unless an explicit
-combat override denies one. With `damage.enforcementEnabled=true`, PalLaw
+combat override denies one. With `regionalCombat.enabled=true`, PalLaw
 transactionally enables Palworld player damage when at least one active area
 requests player combat, so this preset creates a functioning PvP zone even when
 the world starts with player damage disabled. Safe and PvE areas remain protected
-by PalLaw's endpoint policy.
+by PalLaw's target-area policy.
 
-A combat event must be allowed by the area at the source endpoint **and** the area at the target endpoint. This prevents attacks from crossing a protected boundary merely because the attacker stands in an open-policy region.
+A combat event uses only the target's current physical area. The source actor's
+kind selects the combat row, but source position, projectile launch position,
+and effect creation position do not participate. Protected areas therefore
+protect targets standing inside them without restricting attacks against
+targets outside them.
 
 ## Action overrides
 
@@ -326,7 +331,6 @@ Defaults are suitable for most dedicated servers:
   "settings": {
   "hotReload": true,
   "hotReloadSeconds": 1.0,
-  "targetSweepSeconds": 0.5,
   "worldRules": true,
   "adminBypass": true,
   "playerSweepSeconds": 0.25,
@@ -337,14 +341,14 @@ Defaults are suitable for most dedicated servers:
 
 - `hotReload`: watch the configuration file.
 - `hotReloadSeconds`: timestamp-check interval, 0.1-60 seconds.
-- `targetSweepSeconds`: stale denied-target cleanup interval while regional
-  combat authority is enabled, 0.05-10 seconds.
 - `worldRules`: enforce actions, mounts, level requirements, and decay rules.
   Keep this `true` for level-restriction-only servers.
 - `adminBypass`: allow admins to bypass world action and level restrictions.
 - `playerSweepSeconds`: player location and area transition interval, 0.05-10 seconds.
 - `mountGraceSeconds`: delay between the action-denied tip and forced dismount where ground riding or flying is denied, 0-120 seconds.
-- `debugLogging`: verbose area-rule diagnostics plus one aggregated performance profile every 60 seconds. Fast-travel diagnostics include request/completion correlation, physical-arrival acceptance, reminder movement-state transitions and stop reasons, and per-channel alert delivery results; unchanged stationary sweeps remain silent. The profile reports player work and bounded AI-target/deterioration queue time and object counts; ProcessEvent relevant-call ratios; combat evaluations; actor-classification cache effectiveness; removed AI targets; fast-travel lifecycle/delivery counters; and suppressed detail lines. Detailed blocked-decision logging is capped at 100 lines per profile window so diagnostics cannot create an unbounded log or I/O load.
+- `debugLogging`: verbose area-rule and unresolved-combat diagnostics. Ordinary
+  warning logs report the first unresolved event and aggregate repeats every
+  60 seconds; debug logging records every unresolved event with route evidence.
 
 ## Editing workflow
 

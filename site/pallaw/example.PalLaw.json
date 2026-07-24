@@ -1,13 +1,12 @@
 {
   "$schema": "./PalLaw.schema.json",
   "version": 2,
-  "damage": {
-    "enforcementEnabled": true
+  "regionalCombat": {
+    "enabled": true
   },
   "settings": {
     "hotReload": true,
     "hotReloadSeconds": 1.0,
-    "targetSweepSeconds": 0.5,
     "worldRules": true,
     "adminBypass": true,
     "playerSweepSeconds": 0.25,
