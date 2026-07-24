@@ -5,6 +5,7 @@ import {
   MAPS,
   MESSAGE_EVENTS,
   MODES,
+  applyLevelOnlyProfile,
   areaAt,
   clone,
   createDefaultConfig,
@@ -878,6 +879,7 @@ function renderSettingsSidebar() {
     <div class="panel-heading"><div><h2>Runtime settings</h2><p>Safe defaults are supplied; most servers only need regions and modes.</p></div></div>
     <div class="list-stack">
       <div class="region-card"><div class="region-card-top"><span class="region-card-title">Hot reload</span><span class="badge ${config.settings.hotReload ? "pve" : ""}">${config.settings.hotReload ? "On" : "Off"}</span></div><div class="region-meta"><span>Every ${config.settings.hotReloadSeconds}s</span></div></div>
+      <div class="region-card"><div class="region-card-top"><span class="region-card-title">Combat damage rules</span><span class="badge ${config.damage.enforcementEnabled ? "pve" : ""}">${config.damage.enforcementEnabled ? "On" : "Off"}</span></div><div class="region-meta"><span>${config.damage.enforcementEnabled ? "Denied damage is evaluated" : "All damage remains vanilla"}</span></div></div>
       <div class="region-card"><div class="region-card-top"><span class="region-card-title">AI target filtering</span><span class="badge ${config.settings.targetFiltering ? "pve" : ""}">${config.settings.targetFiltering ? "On" : "Off"}</span></div><div class="region-meta"><span>Every ${config.settings.targetSweepSeconds}s</span></div></div>
       <div class="region-card"><div class="region-card-top"><span class="region-card-title">World actions</span><span class="badge ${config.settings.worldRules ? "pve" : ""}">${config.settings.worldRules ? "On" : "Off"}</span></div><div class="region-meta"><span>${config.settings.adminBypass ? "Admins bypass restrictions" : "Admins follow restrictions"}</span></div></div>
     </div>`;
@@ -1014,10 +1016,8 @@ function bindActions(container, areaGetter) {
   });
 }
 
-function damagePolicyLabel(multiplier) {
-  if (multiplier <= 0) return "Denied";
-  if (multiplier === 1) return "Allowed at 1×";
-  return `${Number(multiplier.toFixed(3))}× damage (Advanced)`;
+function combatPolicyLabel(multiplier) {
+  return multiplier > 0 ? "Allowed" : "Denied";
 }
 
 function renderMapObjectRules(area) {
@@ -1031,7 +1031,7 @@ function renderMapObjectRules(area) {
     const raw = quickCombatOverride(area, source.id, target.id);
     const effective = matrix[source.id]?.[target.id] ?? 0;
     return `<div class="override-row">
-          <div class="checkbox-copy"><strong>${escapeHtml(source.label)}</strong><span>Effective: ${damagePolicyLabel(effective)}.</span></div>
+          <div class="checkbox-copy"><strong>${escapeHtml(source.label)}</strong><span>Effective: ${combatPolicyLabel(effective)}.</span></div>
           <select data-quick-combat-source="${source.id}" data-quick-combat-target="${target.id}" class="${raw === "default" ? "tri-default" : raw === "allow" ? "tri-allow" : "tri-deny"}">
             <option value="default" ${raw === "default" ? "selected" : ""}>Default</option>
             <option value="allow" ${raw === "allow" ? "selected" : ""}>Allow</option>
@@ -1051,13 +1051,16 @@ function bindMapObjectRules(container, areaGetter) {
 }
 
 function renderRules(area) {
+  const combatInactive = !config.damage.enforcementEnabled &&
+    !config.settings.targetFiltering;
   return `<div class="rules-stack">
+    ${combatInactive ? '<p class="help">Combat rules are currently inactive. Level and world-action rules remain enabled.</p>' : ""}
     <div class="section-card rules-actions">
       <div class="section-card-header"><div><h3>Player actions</h3><p>Control building, dismantling, mounts, and other regional actions.</p></div></div>
       <div class="section-card-body">${renderActions(area)}</div>
     </div>
     ${renderMapObjectRules(area)}
-    <div class="rules-advanced-heading"><h3>Advanced combat</h3><p>Define ordered actor relationships and custom damage multipliers.</p></div>
+    <div class="rules-advanced-heading"><h3>Advanced combat</h3><p>Define ordered allow or deny relationships between actors.</p></div>
     ${renderCombat(area)}
   </div>`;
 }
@@ -1080,22 +1083,21 @@ function renderCombatMatrix(area) {
   const sources = ACTORS.filter((actor) => !actor.targetOnly);
   return `<div class="matrix-wrap"><table class="combat-matrix"><thead><tr><th>Source ↓ / Target →</th>${targets.map((target) => `<th>${escapeHtml(target.label)}</th>`).join("")}</tr></thead><tbody>${sources.map((source) => `<tr><th>${escapeHtml(source.label)}</th>${targets.map((target) => {
     const value = matrix[source.id]?.[target.id] ?? 0;
-    return `<td class="${value > 0 ? "allowed" : "denied"}" title="${escapeHtml(source.label)} → ${escapeHtml(target.label)}">${value > 0 ? `${Number(value.toFixed(3))}×` : "×"}</td>`;
+    return `<td class="${value > 0 ? "allowed" : "denied"}" title="${escapeHtml(source.label)} → ${escapeHtml(target.label)}">${value > 0 ? "Allow" : "Deny"}</td>`;
   }).join("")}</tr>`).join("")}</tbody></table></div>`;
 }
 
 function renderCombat(area) {
   return `
-    <p class="help">The mode supplies a complete target-and-damage matrix. Ordered overrides below apply afterward; the last matching entry wins. A damage value of 0 also prevents targeting.</p>
+    <p class="help">The mode supplies a complete combat-policy matrix. Ordered allow or deny overrides apply afterward; the last matching entry wins.</p>
     <div id="combatEntries">${area.combat.length ? area.combat.map((entry, index) => {
-    const decision = Object.hasOwn(entry, "damage") ? "damage" : entry.allow ? "allow" : "deny";
+    const decision = entry.allow ? "allow" : "deny";
     return `<div class="combat-entry">
         <div class="combat-entry-head"><strong>Override ${index + 1}</strong><div class="order-controls"><button class="order-button" type="button" data-combat-move="-1" data-index="${index}" ${index === 0 ? "disabled" : ""}>↑</button><button class="order-button" type="button" data-combat-move="1" data-index="${index}" ${index === area.combat.length - 1 ? "disabled" : ""}>↓</button><button class="order-button" type="button" data-combat-delete data-index="${index}" title="Delete">×</button></div></div>
         <label class="field"><span>Source actors</span>${actorChips(entry, "source", true, index)}</label>
         <label class="field"><span>Target actors</span>${actorChips(entry, "target", false, index)}</label>
         <div class="inline-fields">
-          <label class="field"><span>Decision</span><select data-combat-decision data-index="${index}"><option value="allow" ${decision === "allow" ? "selected" : ""}>Allow at 1×</option><option value="deny" ${decision === "deny" ? "selected" : ""}>Deny</option><option value="damage" ${decision === "damage" ? "selected" : ""}>Custom damage</option></select></label>
-          <label class="field"><span>Damage multiplier</span><input data-combat-damage data-index="${index}" type="number" min="0" max="100" step="0.05" value="${Object.hasOwn(entry, "damage") ? Number(entry.damage) : 1}" ${decision === "damage" ? "" : "disabled"}></label>
+          <label class="field"><span>Decision</span><select data-combat-decision data-index="${index}"><option value="allow" ${decision === "allow" ? "selected" : ""}>Allow</option><option value="deny" ${decision === "deny" ? "selected" : ""}>Deny</option></select></label>
         </div>
         <div class="toggle-row"><div class="checkbox-copy"><strong>Bidirectional</strong><span>Also apply the reverse actor relationship when possible.</span></div><label class="switch"><input data-combat-bidirectional data-index="${index}" type="checkbox" ${entry.bidirectional ? "checked" : ""}><span class="switch-track"></span></label></div>
       </div>`;
@@ -1122,15 +1124,7 @@ function bindCombat(container, areaGetter) {
   container.querySelectorAll("[data-combat-decision]").forEach((select) => {
     select.addEventListener("change", () => commit(() => {
       const entry = areaGetter().combat[Number(select.dataset.index)];
-      delete entry.allow;
-      delete entry.damage;
-      if (select.value === "damage") entry.damage = 1;
-      else entry.allow = select.value === "allow";
-    }));
-  });
-  container.querySelectorAll("[data-combat-damage]").forEach((input) => {
-    input.addEventListener("change", () => commit(() => {
-      areaGetter().combat[Number(input.dataset.index)].damage = Math.max(0, Math.min(100, Number(input.value)));
+      entry.allow = select.value === "allow";
     }));
   });
   container.querySelectorAll("[data-combat-bidirectional]").forEach((input) => {
@@ -1222,6 +1216,7 @@ function renderMessagesInspector() {
 const SETTING_DEFINITIONS = [
   { group: "Configuration", id: "hotReload", label: "Hot reload", description: "Watch PalLaw.json and automatically apply valid changes.", type: "boolean" },
   { group: "Configuration", id: "hotReloadSeconds", label: "Reload interval", description: "Seconds between file timestamp checks.", type: "number", min: 0.1, max: 60, step: 0.1 },
+  { group: "Enforcement", scope: "damage", id: "enforcementEnabled", label: "Combat damage rules", description: "Evaluate and neutralize denied character and map-object damage. Turn this off for level/action-only servers; all damage remains vanilla.", type: "boolean" },
   { group: "Enforcement", id: "targetFiltering", label: "AI target filtering", description: "Prevent and clear denied player/Pal targets instead of only cancelling damage.", type: "boolean" },
   { group: "Enforcement", id: "targetSweepSeconds", label: "AI sweep interval", description: "Seconds between stale-target cleanup passes.", type: "number", min: 0.05, max: 10, step: 0.05 },
   { group: "Enforcement", id: "worldRules", label: "World action rules", description: "Enforce build, dismantle, riding, flying, editing, decay, and level restrictions.", type: "boolean" },
@@ -1233,15 +1228,25 @@ const SETTING_DEFINITIONS = [
 
 function renderSettingsInspector() {
   const groups = [...new Set(SETTING_DEFINITIONS.map((setting) => setting.group))];
+  const settingValue = (setting) => setting.scope === "damage"
+    ? config.damage[setting.id]
+    : config.settings[setting.id];
   elements.inspector.innerHTML = `
     <div class="inspector-header"><h2>Server behavior</h2><p>The defaults balance responsive enforcement with dedicated-server cost.</p></div>
+    <div class="code-actions"><button id="levelOnlyPresetButton" type="button" class="button ghost">Use level/action-only profile</button></div>
     <div class="settings-groups">${groups.map((group) => `<section class="settings-group"><h3>${escapeHtml(group)}</h3><div>${SETTING_DEFINITIONS.filter((setting) => setting.group === group).map((setting) => setting.type === "boolean" ? `
-      <div class="setting-row"><div class="checkbox-copy"><strong>${escapeHtml(setting.label)}</strong><span>${escapeHtml(setting.description)}</span></div><label class="switch"><input data-setting-id="${setting.id}" type="checkbox" ${config.settings[setting.id] ? "checked" : ""}><span class="switch-track"></span></label></div>` : `
-      <label class="setting-row setting-number"><div class="checkbox-copy"><strong>${escapeHtml(setting.label)}</strong><span>${escapeHtml(setting.description)}</span></div><input data-setting-id="${setting.id}" type="number" min="${setting.min}" max="${setting.max}" step="${setting.step}" value="${config.settings[setting.id]}"></label>`).join("")}</div></section>`).join("")}</div>`;
+      <div class="setting-row"><div class="checkbox-copy"><strong>${escapeHtml(setting.label)}</strong><span>${escapeHtml(setting.description)}</span></div><label class="switch"><input data-setting-id="${setting.id}" type="checkbox" ${settingValue(setting) ? "checked" : ""}><span class="switch-track"></span></label></div>` : `
+      <label class="setting-row setting-number"><div class="checkbox-copy"><strong>${escapeHtml(setting.label)}</strong><span>${escapeHtml(setting.description)}</span></div><input data-setting-id="${setting.id}" type="number" min="${setting.min}" max="${setting.max}" step="${setting.step}" value="${settingValue(setting)}"></label>`).join("")}</div></section>`).join("")}</div>`;
+  elements.inspector.querySelector("#levelOnlyPresetButton").addEventListener("click", () => commit(() => {
+    applyLevelOnlyProfile(config);
+  }));
   elements.inspector.querySelectorAll("[data-setting-id]").forEach((control) => {
     control.addEventListener("change", () => commit(() => {
       const definition = SETTING_DEFINITIONS.find((entry) => entry.id === control.dataset.settingId);
-      config.settings[definition.id] = definition.type === "boolean"
+      const target = definition.scope === "damage"
+        ? config.damage
+        : config.settings;
+      target[definition.id] = definition.type === "boolean"
         ? control.checked
         : Math.max(definition.min, Math.min(definition.max, Number(control.value)));
     }));
