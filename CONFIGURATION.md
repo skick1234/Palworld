@@ -19,11 +19,9 @@ Most servers only need a wilderness mode and a list of named regions. Advanced a
   "$schema": "./PalLaw.schema.json",
   "version": 2,
   "damage": {
-    "enforcementEnabled": false,
-    "mode": "restrictionOnly"
+    "enforcementEnabled": false
   },
   "settings": {
-    "targetFiltering": false,
     "worldRules": true,
     "debugLogging": false
   },
@@ -50,15 +48,17 @@ Most servers only need a wilderness mode and a list of named regions. Advanced a
 This is the level/action-only profile. Global callbacks remain installed for
 minimum-level, fast-travel, mount, build, and other world rules, but damage
 callbacks return before PalLaw observation, mutation, emergency-gate, or
-capability-health processing. Set `damage.enforcementEnabled` to `true` only
-after qualifying combat enforcement on a private server. AI target filtering is
-an independent opt-in.
+capability-health processing. Set `damage.enforcementEnabled` to `true` to make
+PalLaw manage damage, combat targeting, and regional PvP. When a configured PvP
+area needs player damage, PalLaw transactionally enables the required Palworld
+setting and restores its original value when combat authority is disabled,
+released, or unloaded.
 
 ## Top-level fields
 
 - `$schema`: optional relative path used by editors.
 - `version`: required and currently `2`.
-- `damage`: optional damage enforcement controls. PalLaw 0.2.0 supports `restrictionOnly` and the diagnostic `observeOnly` mode.
+- `damage`: optional master combat-authority control. It defaults to enabled.
 - `settings`: optional runtime tuning.
 - `messages`: optional global player-message defaults.
 - `wilderness`: required named Wilderness.
@@ -116,7 +116,12 @@ Combat between player groups is denied. Environmental combat remains active, so 
 
 ### `pvp`
 
-All recognized combat relationships use an open allow policy unless an explicit combat override denies one. This preset does not enable Palworld's player-damage setting; on a globally PvE server, it cannot create a functioning PvP zone.
+All recognized combat relationships use an open allow policy unless an explicit
+combat override denies one. With `damage.enforcementEnabled=true`, PalLaw
+transactionally enables Palworld player damage when at least one active area
+requests player combat, so this preset creates a functioning PvP zone even when
+the world starts with player damage disabled. Safe and PvE areas remain protected
+by PalLaw's endpoint policy.
 
 A combat event must be allowed by the area at the source endpoint **and** the area at the target endpoint. This prevents attacks from crossing a protected boundary merely because the attacker stands in an open-policy region.
 
@@ -253,7 +258,7 @@ Each event supports three independent outputs: system chat plus two player-speci
   "cooldownSeconds": 0,
   "chat": {
     "enabled": false,
-    "text": "Open combat policy in {region}; PalLaw does not enable server player damage."
+    "text": "Player combat is enabled in {region}."
   },
   "alerts": {
     "brief": {
@@ -303,7 +308,11 @@ Unknown placeholders remain literal. Keep chat messages to 512 characters or les
 
 ### Configuration version
 
-PalLaw Configuration Version 1 was released with PalLaw software `0.1.0` and remains frozen. Software `0.2.0` uses Configuration Version 2, which adds explicit restriction-only damage controls and binary combat overrides. Version 2 publicly removes positive scaling and experimental player-damage lease options.
+PalLaw Configuration Version 1 was released with PalLaw software `0.1.0` and
+remains frozen. Software `0.2.0` uses Configuration Version 2, which adds one
+explicit regional-combat authority switch and binary combat overrides. Version 2
+publicly removes positive scaling, diagnostic damage modes, and separate target
+filtering controls.
 
 Rules Studio and the DLL migrate every released older Configuration Version forward through each adjacent version. The declared source and every intermediate result must validate before the migrated document can be used. A document without `version` is reported and treated as version 1 only when it passes the complete version-1 contract. Invalid, unknown, and newer versions are rejected; reverse migration is not supported.
 
@@ -314,10 +323,9 @@ Rules Studio immediately replaces imported older JSON in its editor model with t
 Defaults are suitable for most dedicated servers:
 
 ```json
-"settings": {
+  "settings": {
   "hotReload": true,
   "hotReloadSeconds": 1.0,
-  "targetFiltering": false,
   "targetSweepSeconds": 0.5,
   "worldRules": true,
   "adminBypass": true,
@@ -329,9 +337,8 @@ Defaults are suitable for most dedicated servers:
 
 - `hotReload`: watch the configuration file.
 - `hotReloadSeconds`: timestamp-check interval, 0.1-60 seconds.
-- `targetFiltering`: block and remove denied AI targets. This is independent of
-  damage enforcement and defaults to `false`.
-- `targetSweepSeconds`: stale-target cleanup interval, 0.05-10 seconds.
+- `targetSweepSeconds`: stale denied-target cleanup interval while regional
+  combat authority is enabled, 0.05-10 seconds.
 - `worldRules`: enforce actions, mounts, level requirements, and decay rules.
   Keep this `true` for level-restriction-only servers.
 - `adminBypass`: allow admins to bypass world action and level restrictions.

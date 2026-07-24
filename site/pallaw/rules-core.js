@@ -84,7 +84,7 @@ export const MODES = [
     id: "pvp",
     label: "PvP",
     color: "#F43F5E",
-    description: "An open combat-policy preset. It does not enable Palworld player damage when the server has player damage disabled."
+    description: "Open player combat. With regional combat authority enabled, PalLaw enables the required player-damage setting and limits combat to the configured areas."
   }
 ];
 
@@ -142,7 +142,6 @@ export const ALERT_TONES = [
 export const DEFAULT_SETTINGS = Object.freeze({
   hotReload: true,
   hotReloadSeconds: 1,
-  targetFiltering: false,
   targetSweepSeconds: 0.5,
   worldRules: true,
   adminBypass: true,
@@ -152,8 +151,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
 });
 
 export const DEFAULT_DAMAGE = Object.freeze({
-  enforcementEnabled: false,
-  mode: "restrictionOnly"
+  enforcementEnabled: true
 });
 
 function defaultAlerts(text, enabledPresentation, briefTone = "normal") {
@@ -180,8 +178,8 @@ export const DEFAULT_MESSAGES = Object.freeze({
   pvpWarning: {
     enabled: true,
     cooldownSeconds: 0,
-    chat: { enabled: false, text: "Open combat policy in {region}; PalLaw does not enable server player damage." },
-    alerts: defaultAlerts("OPEN COMBAT POLICY - {region}", "brief", "negative")
+    chat: { enabled: false, text: "Player combat is enabled in {region}." },
+    alerts: defaultAlerts("PVP ENABLED - {region}", "brief", "negative")
   },
   actionDenied: {
     enabled: true,
@@ -419,10 +417,7 @@ export function hydrateConfig(value) {
     enforcementEnabled: boolean(
       damage.enforcementEnabled,
       DEFAULT_DAMAGE.enforcementEnabled
-    ),
-    mode: ["observeOnly", "restrictionOnly"].includes(damage.mode)
-      ? damage.mode
-      : DEFAULT_DAMAGE.mode
+    )
   };
   config.settings = { ...config.settings, ...(source.settings || {}) };
   for (const key of Object.keys(DEFAULT_SETTINGS)) {
@@ -440,7 +435,6 @@ export function hydrateConfig(value) {
 
 export function applyLevelOnlyProfile(config) {
   config.damage.enforcementEnabled = false;
-  config.settings.targetFiltering = false;
   config.settings.worldRules = true;
   return config;
 }
@@ -585,21 +579,25 @@ export function deriveFeatureSummary(input) {
     needsDecayEnforcement ||= actions.decay === false;
   }
 
-  const targetFiltering = config.settings.targetFiltering !== false;
-  const damageAuthorityEnabled =
-    config.damage.enforcementEnabled && config.damage.mode !== "observeOnly";
+  const damageAuthorityEnabled = config.damage.enforcementEnabled;
   const worldRulesEnabled = config.settings.worldRules !== false;
   const requestsRegionalPlayerDamage = enablesRegionalPlayerDamage;
   return Object.freeze({
     requestsRegionalPlayerDamage,
+    enablesRegionalPlayerDamage:
+      damageAuthorityEnabled && requestsRegionalPlayerDamage,
     characterPolicyNonVanilla:
       damageAuthorityEnabled && characterPolicyNonVanilla,
     structurePolicyNonVanilla:
       damageAuthorityEnabled && structurePolicyNonVanilla,
-    needsBaseCampEntryFiltering: targetFiltering && deniedBaseCampRelationship,
-    needsDirectedAiFiltering: targetFiltering && deniedAiRelationship,
-    needsAiResultSanitization: targetFiltering && deniedAiRelationship,
-    needsRetainedTargetRecovery: targetFiltering && deniedAiRelationship,
+    needsBaseCampEntryFiltering:
+      damageAuthorityEnabled && deniedBaseCampRelationship,
+    needsDirectedAiFiltering:
+      damageAuthorityEnabled && deniedAiRelationship,
+    needsAiResultSanitization:
+      damageAuthorityEnabled && deniedAiRelationship,
+    needsRetainedTargetRecovery:
+      damageAuthorityEnabled && deniedAiRelationship,
     needsWorldActionAuthorization:
       worldRulesEnabled && needsWorldActionAuthorization,
     needsPlayerActionEnforcement:
@@ -876,17 +874,13 @@ function validateRawArea(value, context, region, errors) {
 function validateRawDamage(value, errors) {
   if (!rejectUnknownKeys(
     value,
-    new Set(["enforcementEnabled", "mode"]),
+    new Set(["enforcementEnabled"]),
     "damage",
     errors
   )) return;
   if (Object.hasOwn(value, "enforcementEnabled") &&
       typeof value.enforcementEnabled !== "boolean") {
     errors.push("damage.enforcementEnabled must be true or false.");
-  }
-  if (Object.hasOwn(value, "mode") &&
-      !["observeOnly", "restrictionOnly"].includes(value.mode)) {
-    errors.push("damage.mode must be observeOnly or restrictionOnly.");
   }
 }
 
@@ -972,9 +966,9 @@ export function validateConfig(input) {
 
   const damageFeatures = deriveFeatureSummary(config);
   if (damageFeatures.requestsRegionalPlayerDamage &&
-      config.damage.mode === "restrictionOnly") {
+      !config.damage.enforcementEnabled) {
     warnings.push(
-      "Regional PvP rules cannot enable player damage in restrictionOnly mode because PalLaw will not change Palworld's global player-damage setting."
+      "Regional combat is configured but damage.enforcementEnabled is false, so PalLaw leaves all combat on Palworld's vanilla path."
     );
   }
   const boundedErrors = errorSink.finalize();
@@ -1097,11 +1091,14 @@ function currentMigrationRegistry() {
   };
   const migrateV1ToV2 = (document, report) => {
     document.damage = clone(DEFAULT_DAMAGE);
+    if (document.settings && typeof document.settings === "object") {
+      delete document.settings.targetFiltering;
+    }
     addMigrationFallback(report, {
       fromVersion: 1,
       toVersion: 2,
       path: "$.damage.enforcementEnabled",
-      message: "PalLaw 0.2.0 migrated combat enforcement to disabled. Review the new restriction-only behavior and explicitly enable it after private-server testing."
+      message: "PalLaw 0.2.0 makes regional combat authority explicit and enables it to preserve Version 1 combat behavior. Set damage.enforcementEnabled=false for vanilla combat with level and action rules only."
     });
     migrateCombat(document.wilderness, "$.wilderness", report);
     if (Array.isArray(document.regions)) {

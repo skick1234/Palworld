@@ -2,13 +2,11 @@
   "$schema": "../../site/pallaw/PalLaw.schema.json",
   "version": 2,
   "damage": {
-    "enforcementEnabled": false,
-    "mode": "restrictionOnly"
+    "enforcementEnabled": true
   },
   "settings": {
     "hotReload": true,
     "hotReloadSeconds": 1.0,
-    "targetFiltering": false,
     "targetSweepSeconds": 0.5,
     "worldRules": true,
     "adminBypass": true,
@@ -44,12 +42,12 @@
       "enabled": true,
       "chat": {
         "enabled": false,
-        "text": "Open combat policy in {region}; PalLaw does not enable server player damage."
+        "text": "Player combat is enabled in {region}."
       },
       "alerts": {
         "brief": {
           "enabled": true,
-          "text": "Open combat policy - server setting unchanged.",
+          "text": "PvP enabled - {region}.",
           "tone": "negative"
         }
       }
@@ -91,7 +89,7 @@
   },
   "regions": [
     {
-      "name": "Open Combat Policy",
+      "name": "PvP Island",
       "enabled": true,
       "mode": "pvp",
       "minimumLevel": 20,
@@ -105,7 +103,7 @@
       ],
       "messages": {
         "regionChanged": {
-          "chat": "Entered {region}. This preset does not enable Palworld player damage."
+          "chat": "Entered {region}. Player combat is enabled here."
         }
       }
     },

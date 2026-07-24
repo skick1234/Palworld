@@ -879,8 +879,7 @@ function renderSettingsSidebar() {
     <div class="panel-heading"><div><h2>Runtime settings</h2><p>Safe defaults are supplied; most servers only need regions and modes.</p></div></div>
     <div class="list-stack">
       <div class="region-card"><div class="region-card-top"><span class="region-card-title">Hot reload</span><span class="badge ${config.settings.hotReload ? "pve" : ""}">${config.settings.hotReload ? "On" : "Off"}</span></div><div class="region-meta"><span>Every ${config.settings.hotReloadSeconds}s</span></div></div>
-      <div class="region-card"><div class="region-card-top"><span class="region-card-title">Combat damage rules</span><span class="badge ${config.damage.enforcementEnabled ? "pve" : ""}">${config.damage.enforcementEnabled ? "On" : "Off"}</span></div><div class="region-meta"><span>${config.damage.enforcementEnabled ? "Denied damage is evaluated" : "All damage remains vanilla"}</span></div></div>
-      <div class="region-card"><div class="region-card-top"><span class="region-card-title">AI target filtering</span><span class="badge ${config.settings.targetFiltering ? "pve" : ""}">${config.settings.targetFiltering ? "On" : "Off"}</span></div><div class="region-meta"><span>Every ${config.settings.targetSweepSeconds}s</span></div></div>
+      <div class="region-card"><div class="region-card-top"><span class="region-card-title">Regional combat authority</span><span class="badge ${config.damage.enforcementEnabled ? "pve" : ""}">${config.damage.enforcementEnabled ? "On" : "Off"}</span></div><div class="region-meta"><span>${config.damage.enforcementEnabled ? "PalLaw manages combat and regional PvP" : "All combat remains vanilla"}</span></div></div>
       <div class="region-card"><div class="region-card-top"><span class="region-card-title">World actions</span><span class="badge ${config.settings.worldRules ? "pve" : ""}">${config.settings.worldRules ? "On" : "Off"}</span></div><div class="region-meta"><span>${config.settings.adminBypass ? "Admins bypass restrictions" : "Admins follow restrictions"}</span></div></div>
     </div>`;
 }
@@ -1051,8 +1050,7 @@ function bindMapObjectRules(container, areaGetter) {
 }
 
 function renderRules(area) {
-  const combatInactive = !config.damage.enforcementEnabled &&
-    !config.settings.targetFiltering;
+  const combatInactive = !config.damage.enforcementEnabled;
   return `<div class="rules-stack">
     ${combatInactive ? '<p class="help">Combat rules are currently inactive. Level and world-action rules remain enabled.</p>' : ""}
     <div class="section-card rules-actions">
@@ -1216,9 +1214,8 @@ function renderMessagesInspector() {
 const SETTING_DEFINITIONS = [
   { group: "Configuration", id: "hotReload", label: "Hot reload", description: "Watch PalLaw.json and automatically apply valid changes.", type: "boolean" },
   { group: "Configuration", id: "hotReloadSeconds", label: "Reload interval", description: "Seconds between file timestamp checks.", type: "number", min: 0.1, max: 60, step: 0.1 },
-  { group: "Enforcement", scope: "damage", id: "enforcementEnabled", label: "Combat damage rules", description: "Evaluate and neutralize denied character and map-object damage. Turn this off for level/action-only servers; all damage remains vanilla.", type: "boolean" },
-  { group: "Enforcement", id: "targetFiltering", label: "AI target filtering", description: "Prevent and clear denied player/Pal targets instead of only cancelling damage.", type: "boolean" },
-  { group: "Enforcement", id: "targetSweepSeconds", label: "AI sweep interval", description: "Seconds between stale-target cleanup passes.", type: "number", min: 0.05, max: 10, step: 0.05 },
+  { group: "Enforcement", scope: "damage", id: "enforcementEnabled", label: "Regional combat authority", description: "When enabled, PalLaw manages combat, AI targeting, and the Palworld player-damage setting so PvP regions work on a PvP-disabled world. Turn this off for fully vanilla combat with level and action rules only.", type: "boolean" },
+  { group: "Enforcement", id: "targetSweepSeconds", label: "Combat target sweep interval", description: "Seconds between stale denied-target cleanup passes while regional combat authority is enabled.", type: "number", min: 0.05, max: 10, step: 0.05 },
   { group: "Enforcement", id: "worldRules", label: "World action rules", description: "Enforce build, dismantle, riding, flying, editing, decay, and level restrictions.", type: "boolean" },
   { group: "Enforcement", id: "adminBypass", label: "Administrator bypass", description: "Allow administrators to bypass action and level restrictions.", type: "boolean" },
   { group: "Player tracking", id: "playerSweepSeconds", label: "Player sweep interval", description: "Seconds between location, region, mount, and level checks.", type: "number", min: 0.05, max: 10, step: 0.05 },

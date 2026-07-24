@@ -2,11 +2,9 @@
   "$schema": "../../site/pallaw/PalLaw.schema.json",
   "version": 2,
   "damage": {
-    "enforcementEnabled": false,
-    "mode": "restrictionOnly"
+    "enforcementEnabled": false
   },
   "settings": {
-    "targetFiltering": false,
     "worldRules": true,
     "debugLogging": false
   },

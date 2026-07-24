@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "PalLaw.v2.schema.json",
   "title": "PalLaw configuration",
-  "description": "PalLaw Configuration Version 2. Stable damage enforcement is restriction-only and never enables Palworld's global player-damage setting. Files are valid UTF-8 JSON, at most 4 MiB including an optional BOM, with no duplicate object keys and a maximum container depth of 32.",
+  "description": "PalLaw Configuration Version 2. Regional combat authority can transactionally enable Palworld player damage when a configured PvP area requires it, then applies PalLaw's regional allow and deny policy. Files are valid UTF-8 JSON, at most 4 MiB including an optional BOM, with no duplicate object keys and a maximum container depth of 32.",
   "type": "object",
   "additionalProperties": false,
   "required": ["version", "wilderness"],
@@ -55,14 +55,8 @@
       "properties": {
         "enforcementEnabled": {
           "type": "boolean",
-          "default": false,
-          "description": "Evaluate and neutralize denied character and map-object damage. When false, all damage remains on Palworld's vanilla path."
-        },
-        "mode": {
-          "type": "string",
-          "enum": ["observeOnly", "restrictionOnly"],
-          "default": "restrictionOnly",
-          "description": "observeOnly records evidence without mutation. restrictionOnly can deny verified damage Palworld already emits and never changes Palworld's global player-damage setting."
+          "default": true,
+          "description": "When true, PalLaw manages combat, AI targeting, and the Palworld player-damage setting so configured PvP regions work even when the world starts with player damage disabled. When false, PalLaw does not observe, filter, or alter combat and restores vanilla behavior."
         }
       }
     },
@@ -83,7 +77,6 @@
       "properties": {
         "hotReload": { "type": "boolean", "default": true },
         "hotReloadSeconds": { "type": "number", "minimum": 0.1, "maximum": 60, "default": 1 },
-        "targetFiltering": { "type": "boolean", "default": false },
         "targetSweepSeconds": { "type": "number", "minimum": 0.05, "maximum": 10, "default": 0.5 },
         "worldRules": { "type": "boolean", "default": true },
         "adminBypass": { "type": "boolean", "default": true },
