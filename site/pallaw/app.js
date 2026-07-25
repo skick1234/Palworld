@@ -24,9 +24,9 @@ import {
   validateConfig,
   worldToInGameMap,
   worldToMapFraction
-} from "./rules-core.js?v=3";
-import { createMessageEditor } from "./message-editor.js?v=3";
-import { createDocumentStore } from "./document-store.js?v=3";
+} from "./rules-core.js?v=4";
+import { createMessageEditor } from "./message-editor.js?v=4";
+import { createDocumentStore } from "./document-store.js?v=4";
 
 const STORAGE_KEY = "pallaw.studio.v1";
 
@@ -1018,7 +1018,7 @@ function combatPolicyLabel(allowed) {
 function renderMapObjectRules(area) {
   const matrix = effectiveCombat(area);
   const sources = ACTORS.filter((actor) => !actor.targetOnly);
-  const targets = ACTORS.filter((actor) => actor.targetOnly);
+  const targets = ACTORS.filter((actor) => actor.mapObject);
   return targets.map((target) => `
     <div class="section-card map-object-rules">
       <div class="section-card-header"><div><h3>${escapeHtml(target.label)}</h3><p>${escapeHtml(target.description)}</p></div></div>

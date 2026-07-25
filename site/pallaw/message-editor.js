@@ -6,7 +6,7 @@ import {
   enabledMessageOutputCount,
   formatTemplate,
   resolveAreaMessages
-} from "./rules-core.js?v=3";
+} from "./rules-core.js?v=4";
 
 export function ensureMessageOverride(config, area, eventId) {
   area.messages ||= {};

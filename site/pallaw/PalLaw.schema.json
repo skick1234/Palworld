@@ -36,7 +36,8 @@
     },
     "sourceActor": {
       "type": "string",
-      "enum": ["player", "partnerPal", "basePal", "wildPal", "npc"]
+      "description": "Responsible actor at the final damage route. baseStructure applies when Palworld reports a base-attributed structure, such as a defensive structure, as that source.",
+      "enum": ["player", "partnerPal", "basePal", "baseStructure", "wildPal", "npc"]
     },
     "sourceSelection": {
       "oneOf": [

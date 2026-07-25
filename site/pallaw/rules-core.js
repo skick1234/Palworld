@@ -7,13 +7,13 @@ import {
   createBoundedErrorSink,
   parseConfigSource,
   validateRawConfigurationLimits
-} from "./config-source.js?v=3";
+} from "./config-source.js?v=4";
 import {
   addMigrationFallback,
   migrateConfiguration
-} from "./configuration-migrations.js?v=3";
+} from "./configuration-migrations.js?v=4";
 
-export { CONFIG_LIMITS, ConfigSourceError, parseConfigSource } from "./config-source.js?v=3";
+export { CONFIG_LIMITS, ConfigSourceError, parseConfigSource } from "./config-source.js?v=4";
 
 export {
   MAPS,
@@ -21,7 +21,7 @@ export {
   mapFractionToWorld,
   worldToInGameMap,
   worldToMapFraction
-} from "./map-coordinates.js?v=3";
+} from "./map-coordinates.js?v=4";
 
 export const ACTORS = [
   { id: "player", label: "Player" },
@@ -30,8 +30,8 @@ export const ACTORS = [
   {
     id: "baseStructure",
     label: "Base Structure",
-    description: "Structures attributed to a base camp or guild.",
-    targetOnly: true
+    description: "Structures attributed to a base camp or guild, including defensive structures when Palworld reports the structure as the responsible damage source.",
+    mapObject: true
   },
   { id: "wildPal", label: "Wild Pal" },
   { id: "npc", label: "NPC" },
@@ -39,12 +39,14 @@ export const ACTORS = [
     id: "structure",
     label: "Player-Built Structure",
     description: "Objects attributed to a player outside of a base camp.",
+    mapObject: true,
     targetOnly: true
   },
   {
     id: "environment",
     label: "Environmental Map Object",
     description: "Natural mineral resource nodes, including stone and ore. Trees and other foliage are excluded.",
+    mapObject: true,
     targetOnly: true
   }
 ];
@@ -455,7 +457,7 @@ export function modeCombat(mode) {
       Object.fromEntries(ACTORS.map((target) => [target.id, true]))
     ])
   );
-  const ownedSources = ["player", "partnerPal", "basePal"];
+  const ownedSources = ["player", "partnerPal", "basePal", "baseStructure"];
   const ownedTargets = ["player", "partnerPal", "basePal", "baseStructure"];
   if (mode === "pve" || mode === "safe") {
     for (const source of ownedSources) {
@@ -546,7 +548,7 @@ export function setQuickCombatOverride(area, source, target, value) {
 export function deriveFeatureSummary(input) {
   const config = hydrateConfig(input);
   const areas = [config.wilderness, ...config.regions.filter((region) => region.enabled !== false)];
-  const owned = new Set(["player", "partnerPal", "basePal"]);
+  const owned = new Set(["player", "partnerPal", "basePal", "baseStructure"]);
   let enablesRegionalPlayerDamage = false;
   let characterPolicyNonVanilla = false;
   let structurePolicyNonVanilla = false;
