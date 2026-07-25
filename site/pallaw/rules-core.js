@@ -1,4 +1,4 @@
-export const CONFIG_VERSION = 1;
+export const CONFIG_VERSION = 2;
 export const CONFIG_FILE_NAME = "PalLaw.json";
 export const SCHEMA_FILE_NAME = "PalLaw.schema.json";
 
@@ -7,10 +7,13 @@ import {
   createBoundedErrorSink,
   parseConfigSource,
   validateRawConfigurationLimits
-} from "./config-source.js?v=1";
-import { migrateConfiguration } from "./configuration-migrations.js?v=1";
+} from "./config-source.js?v=2";
+import {
+  addMigrationFallback,
+  migrateConfiguration
+} from "./configuration-migrations.js?v=2";
 
-export { CONFIG_LIMITS, ConfigSourceError, parseConfigSource } from "./config-source.js?v=1";
+export { CONFIG_LIMITS, ConfigSourceError, parseConfigSource } from "./config-source.js?v=2";
 
 export {
   MAPS,
@@ -18,7 +21,7 @@ export {
   mapFractionToWorld,
   worldToInGameMap,
   worldToMapFraction
-} from "./map-coordinates.js?v=1";
+} from "./map-coordinates.js?v=2";
 
 export const ACTORS = [
   { id: "player", label: "Player" },
@@ -81,7 +84,7 @@ export const MODES = [
     id: "pvp",
     label: "PvP",
     color: "#F43F5E",
-    description: "All recognized combat relationships are allowed unless an override denies or scales one."
+    description: "Open player combat. With regional combat authority enabled, PalLaw enables the required player-damage setting and limits combat to the configured areas."
   }
 ];
 
@@ -139,13 +142,15 @@ export const ALERT_TONES = [
 export const DEFAULT_SETTINGS = Object.freeze({
   hotReload: true,
   hotReloadSeconds: 1,
-  targetFiltering: true,
-  targetSweepSeconds: 0.5,
   worldRules: true,
   adminBypass: true,
   playerSweepSeconds: 0.25,
   mountGraceSeconds: 15,
   debugLogging: false
+});
+
+export const DEFAULT_REGIONAL_COMBAT = Object.freeze({
+  enabled: true
 });
 
 function defaultAlerts(text, enabledPresentation, briefTone = "normal") {
@@ -172,8 +177,8 @@ export const DEFAULT_MESSAGES = Object.freeze({
   pvpWarning: {
     enabled: true,
     cooldownSeconds: 0,
-    chat: { enabled: false, text: "Warning: PvP is enabled in {region}." },
-    alerts: defaultAlerts("PvP ENABLED - {region}", "brief", "negative")
+    chat: { enabled: false, text: "Player combat is enabled in {region}." },
+    alerts: defaultAlerts("PVP ENABLED - {region}", "brief", "negative")
   },
   actionDenied: {
     enabled: true,
@@ -212,6 +217,7 @@ export function createDefaultConfig() {
   return {
     $schema: `./${SCHEMA_FILE_NAME}`,
     version: CONFIG_VERSION,
+    regionalCombat: clone(DEFAULT_REGIONAL_COMBAT),
     settings: clone(DEFAULT_SETTINGS),
     messages: clone(DEFAULT_MESSAGES),
     wilderness: {
@@ -351,7 +357,6 @@ function normalizeCombat(value) {
       bidirectional: boolean(entry?.bidirectional, false)
     };
     if (typeof entry?.allow === "boolean") result.allow = entry.allow;
-    if (Number.isFinite(Number(entry?.damage))) result.damage = Number(entry.damage);
     return result;
   });
 }
@@ -404,6 +409,17 @@ export function hydrateConfig(value) {
   const config = createDefaultConfig();
   config.$schema = text(source.$schema, config.$schema);
   config.version = Number(source.version ?? CONFIG_VERSION);
+  const regionalCombat = source.regionalCombat &&
+      typeof source.regionalCombat === "object" &&
+      !Array.isArray(source.regionalCombat)
+    ? source.regionalCombat
+    : {};
+  config.regionalCombat = {
+    enabled: boolean(
+      regionalCombat.enabled,
+      DEFAULT_REGIONAL_COMBAT.enabled
+    )
+  };
   config.settings = { ...config.settings, ...(source.settings || {}) };
   for (const key of Object.keys(DEFAULT_SETTINGS)) {
     config.settings[key] = typeof DEFAULT_SETTINGS[key] === "boolean"
@@ -430,20 +446,20 @@ export function modeCombat(mode) {
   const matrix = Object.fromEntries(
     ACTORS.filter((actor) => !actor.targetOnly).map((source) => [
       source.id,
-      Object.fromEntries(ACTORS.map((target) => [target.id, 1]))
+      Object.fromEntries(ACTORS.map((target) => [target.id, true]))
     ])
   );
   const owned = ["player", "partnerPal", "basePal"];
   if (mode === "pve" || mode === "safe") {
     for (const source of owned) {
-      for (const target of owned) matrix[source][target] = 0;
+      for (const target of owned) matrix[source][target] = false;
     }
   }
   if (mode === "safe") {
     for (const source of Object.keys(matrix)) {
       for (const target of ACTORS.map((actor) => actor.id)) {
         if (target === "structure" || target === "environment") continue;
-        if (owned.includes(source) || owned.includes(target)) matrix[source][target] = 0;
+        if (owned.includes(source) || owned.includes(target)) matrix[source][target] = false;
       }
     }
   }
@@ -455,14 +471,14 @@ export function effectiveCombat(area) {
   for (const entry of area?.combat || []) {
     const sources = normalizeSelection(entry.source);
     const targets = normalizeSelection(entry.target);
-    const scale = Object.hasOwn(entry, "damage") ? Number(entry.damage) : (entry.allow ? 1 : 0);
+    const allowed = entry.allow === true;
     for (const source of sources) {
       if (!matrix[source]) continue;
       for (const target of targets) {
         if (!Object.hasOwn(matrix[source], target)) continue;
-        matrix[source][target] = scale;
+        matrix[source][target] = allowed;
         if (entry.bidirectional && matrix[target] && Object.hasOwn(matrix[target], source)) {
-          matrix[target][source] = scale;
+          matrix[target][source] = allowed;
         }
       }
     }
@@ -524,54 +540,54 @@ export function deriveFeatureSummary(input) {
   const config = hydrateConfig(input);
   const areas = [config.wilderness, ...config.regions.filter((region) => region.enabled !== false)];
   const owned = new Set(["player", "partnerPal", "basePal"]);
-  const aiSources = new Set(["basePal", "wildPal", "npc"]);
   let enablesRegionalPlayerDamage = false;
   let characterPolicyNonVanilla = false;
-  let characterPositiveScaling = false;
   let structurePolicyNonVanilla = false;
-  let structurePositiveScaling = false;
-  let deniedBaseCampRelationship = false;
-  let deniedAiRelationship = false;
   let needsWorldActionAuthorization = false;
   let needsPlayerActionEnforcement = false;
+  let needsFastTravelAuthorization = false;
   let needsDecayEnforcement = false;
 
   for (const area of areas) {
     const matrix = effectiveCombat(area);
     for (const [source, targets] of Object.entries(matrix)) {
-      for (const [target, multiplier] of Object.entries(targets)) {
+      for (const [target, allowed] of Object.entries(targets)) {
         if (target === "structure" || target === "environment") {
-          structurePolicyNonVanilla ||= multiplier !== 1;
-          structurePositiveScaling ||= multiplier > 0 && multiplier !== 1;
+          structurePolicyNonVanilla ||= !allowed;
           continue;
         }
-        characterPolicyNonVanilla ||= multiplier !== 1;
-        characterPositiveScaling ||= multiplier > 0 && multiplier !== 1;
-        enablesRegionalPlayerDamage ||= owned.has(source) && owned.has(target) && multiplier > 0;
-        deniedBaseCampRelationship ||= source === "basePal" && ["player", "partnerPal"].includes(target) && multiplier <= 0;
-        deniedAiRelationship ||= aiSources.has(source) && multiplier <= 0;
+        characterPolicyNonVanilla ||= !allowed;
+        enablesRegionalPlayerDamage ||= owned.has(source) && owned.has(target) && allowed;
       }
     }
     const actions = effectiveActions(area);
     needsWorldActionAuthorization ||= ["build", "dismantle", "editSign", "editLock"].some((action) => actions[action] === false);
-    needsPlayerActionEnforcement ||= ["ride", "fly"].some((action) => actions[action] === false);
+    needsPlayerActionEnforcement ||= area.minimumLevel != null ||
+      ["ride", "fly"].some((action) => actions[action] === false);
+    needsFastTravelAuthorization ||= area.minimumLevel != null ||
+      ["fastTravelDeparture", "fastTravelArrival"].some((action) => actions[action] === false);
     needsDecayEnforcement ||= actions.decay === false;
   }
 
-  const targetFiltering = config.settings.targetFiltering !== false;
+  const regionalCombatEnabled = config.regionalCombat.enabled;
+  const worldRulesEnabled = config.settings.worldRules !== false;
+  const requestsRegionalPlayerDamage = enablesRegionalPlayerDamage;
   return Object.freeze({
-    enablesRegionalPlayerDamage,
-    characterPolicyNonVanilla,
-    characterPositiveScaling,
-    structurePolicyNonVanilla,
-    structurePositiveScaling,
-    needsBaseCampEntryFiltering: targetFiltering && deniedBaseCampRelationship,
-    needsDirectedAiFiltering: targetFiltering && deniedAiRelationship,
-    needsAiResultSanitization: targetFiltering && deniedAiRelationship,
-    needsRetainedTargetRecovery: targetFiltering && deniedAiRelationship,
-    needsWorldActionAuthorization,
-    needsPlayerActionEnforcement,
-    needsDecayEnforcement,
+    requestsRegionalPlayerDamage,
+    enablesRegionalPlayerDamage:
+      regionalCombatEnabled && requestsRegionalPlayerDamage,
+    characterPolicyNonVanilla:
+      regionalCombatEnabled && characterPolicyNonVanilla,
+    structurePolicyNonVanilla:
+      regionalCombatEnabled && structurePolicyNonVanilla,
+    needsWorldActionAuthorization:
+      worldRulesEnabled && needsWorldActionAuthorization,
+    needsPlayerActionEnforcement:
+      worldRulesEnabled && needsPlayerActionEnforcement,
+    needsFastTravelAuthorization:
+      worldRulesEnabled && needsFastTravelAuthorization,
+    needsDecayEnforcement:
+      worldRulesEnabled && needsDecayEnforcement,
     hotReloadEnabled: config.settings.hotReload !== false,
     notificationsEnabled: config.messages.enabled !== false,
     profilingEnabled: false
@@ -658,18 +674,12 @@ export function areaAt(config, point) {
   return result;
 }
 
-export function evaluateCombat(config, sourceKind, sourcePoint, targetKind, targetPoint) {
-  const sourceArea = areaAt(config, sourcePoint);
+export function evaluateCombat(config, sourceKind, targetKind, targetPoint) {
   const targetArea = areaAt(config, targetPoint);
-  const sourceMatrix = effectiveCombat(sourceArea);
   const targetMatrix = effectiveCombat(targetArea);
-  const sourceScale = sourceMatrix[sourceKind]?.[targetKind] ?? 0;
-  const targetScale = targetMatrix[sourceKind]?.[targetKind] ?? 0;
-  const allowed = sourceScale > 0 && targetScale > 0;
+  const allowed = targetMatrix[sourceKind]?.[targetKind] ?? false;
   return {
     allowed,
-    damageScale: allowed ? Math.min(sourceScale, targetScale) : 0,
-    sourceArea,
     targetArea
   };
 }
@@ -707,10 +717,9 @@ function validateCombat(entries, context, errors) {
     const targets = normalizeSelection(entry?.target);
     if (!sources.length || sources.some((actor) => !SOURCE_ACTOR_IDS.has(actor))) errors.push(`${prefix}.source contains an unknown source actor.`);
     if (!targets.length || targets.some((actor) => !ACTOR_IDS.has(actor))) errors.push(`${prefix}.target contains an unknown target actor.`);
-    const hasAllow = typeof entry?.allow === "boolean";
-    const hasDamage = Number.isFinite(Number(entry?.damage));
-    if (hasAllow === hasDamage) errors.push(`${prefix} must use exactly one of allow or damage.`);
-    if (hasDamage && (Number(entry.damage) < 0 || Number(entry.damage) > 100)) errors.push(`${prefix}.damage must be between 0 and 100.`);
+    if (typeof entry?.allow !== "boolean") {
+      errors.push(`${prefix}.allow must be true or false.`);
+    }
   });
 }
 
@@ -813,9 +822,14 @@ function validateRawCombat(value, context, errors) {
     if (!rejectUnknownKeys(entry, new Set(["source", "target", "allow", "damage", "bidirectional"]), prefix, errors)) return;
     if (!Object.hasOwn(entry, "source")) errors.push(`${prefix}.source is required.`);
     if (!Object.hasOwn(entry, "target")) errors.push(`${prefix}.target is required.`);
-    const hasAllow = Object.hasOwn(entry, "allow");
-    const hasDamage = Object.hasOwn(entry, "damage");
-    if (hasAllow === hasDamage) errors.push(`${prefix} must use exactly one of allow or damage.`);
+    if (Object.hasOwn(entry, "damage")) {
+      errors.push(`${prefix}.damage is not supported in PalLaw 0.2.0; use allow=true or allow=false.`);
+    }
+    if (!Object.hasOwn(entry, "allow")) {
+      errors.push(`${prefix}.allow is required.`);
+    } else if (typeof entry.allow !== "boolean") {
+      errors.push(`${prefix}.allow must be true or false.`);
+    }
   });
 }
 
@@ -833,10 +847,26 @@ function validateRawArea(value, context, region, errors) {
   if (region && !Object.hasOwn(value, "polygon")) errors.push(`${context}.polygon is required.`);
 }
 
+function validateRawRegionalCombat(value, errors) {
+  if (!rejectUnknownKeys(
+    value,
+    new Set(["enabled"]),
+    "regionalCombat",
+    errors
+  )) return;
+  if (Object.hasOwn(value, "enabled") &&
+      typeof value.enabled !== "boolean") {
+    errors.push("regionalCombat.enabled must be true or false.");
+  }
+}
+
 function validateRawConfig(input, errors) {
-  if (!rejectUnknownKeys(input, new Set(["$schema", "version", "settings", "messages", "wilderness", "regions"]), "root", errors)) return;
+  if (!rejectUnknownKeys(input, new Set(["$schema", "version", "regionalCombat", "settings", "messages", "wilderness", "regions"]), "root", errors)) return;
   if (!Object.hasOwn(input, "version")) errors.push("version is required.");
   if (!Object.hasOwn(input, "wilderness")) errors.push("wilderness is required.");
+  if (Object.hasOwn(input, "regionalCombat")) {
+    validateRawRegionalCombat(input.regionalCombat, errors);
+  }
   if (Object.hasOwn(input, "settings")) {
     const allowed = new Set(Object.keys(DEFAULT_SETTINGS));
     rejectUnknownKeys(input.settings, allowed, "settings", errors);
@@ -912,6 +942,13 @@ export function validateConfig(input) {
     }
   }
 
+  const combatFeatures = deriveFeatureSummary(config);
+  if (combatFeatures.requestsRegionalPlayerDamage &&
+      !config.regionalCombat.enabled) {
+    warnings.push(
+      "Regional combat is configured but regionalCombat.enabled is false, so PalLaw leaves all combat on Palworld's vanilla path."
+    );
+  }
   const boundedErrors = errorSink.finalize();
   return {
     config,
@@ -982,6 +1019,7 @@ export function serializeConfig(input) {
   const result = {
     $schema: `./${SCHEMA_FILE_NAME}`,
     version: CONFIG_VERSION,
+    regionalCombat: clone(config.regionalCombat),
     settings: clone(config.settings),
     messages: compactMessages(config.messages, DEFAULT_MESSAGES, true),
     wilderness: compactArea(config.wilderness, config.messages),
@@ -1005,13 +1043,72 @@ export function stringifyConfig(input) {
 }
 
 function currentMigrationRegistry() {
-  return [{
-    version: 1,
-    validate(document) {
-      const validation = validateConfig(document);
-      if (!validation.valid) throw new Error(validation.errors.join("\n"));
+  const migrateCombat = (area, path, report) => {
+    if (!area || !Array.isArray(area.combat)) return;
+    area.combat.forEach((entry, index) => {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry) ||
+          !Object.hasOwn(entry, "damage")) {
+        return;
+      }
+      if (Object.hasOwn(entry, "allow")) {
+        throw new Error(`${path}.combat[${index}] must use exactly one of allow or damage.`);
+      }
+      if (typeof entry.damage !== "number" || !Number.isFinite(entry.damage) ||
+          entry.damage < 0 || entry.damage > 100) {
+        throw new Error(`${path}.combat[${index}].damage must be between 0 and 100.`);
+      }
+      entry.allow = entry.damage > 0;
+      delete entry.damage;
+      addMigrationFallback(report, {
+        fromVersion: 1,
+        toVersion: 2,
+        path: `${path}.combat[${index}].damage`,
+        message: "PalLaw 0.2.0 removed positive damage scaling; damage <= 0 became allow=false and damage > 0 became allow=true."
+      });
+    });
+  };
+  const migrateV1ToV2 = (document, report) => {
+    document.regionalCombat = clone(DEFAULT_REGIONAL_COMBAT);
+    if (document.settings && typeof document.settings === "object") {
+      delete document.settings.targetFiltering;
+      delete document.settings.targetSweepSeconds;
     }
-  }];
+    addMigrationFallback(report, {
+      fromVersion: 1,
+      toVersion: 2,
+      path: "$.regionalCombat.enabled",
+      message: "PalLaw 0.2.0 makes regional combat authority explicit and enables it to preserve Version 1 combat behavior. Set regionalCombat.enabled=false for vanilla combat with level and action rules only."
+    });
+    migrateCombat(document.wilderness, "$.wilderness", report);
+    if (Array.isArray(document.regions)) {
+      document.regions.forEach((region, index) => {
+        migrateCombat(region, `$.regions[${index}]`, report);
+      });
+    }
+  };
+  return [
+    {
+      version: 1,
+      validate(document) {
+        if (Object.hasOwn(document, "damage")) {
+          throw new Error("Configuration Version 1 does not allow the damage object.");
+        }
+        const candidate = clone(document);
+        migrateV1ToV2(candidate, []);
+        candidate.version = 2;
+        const validation = validateConfig(candidate);
+        if (!validation.valid) throw new Error(validation.errors.join("\n"));
+      },
+      migrateToNext: migrateV1ToV2
+    },
+    {
+      version: 2,
+      validate(document) {
+        const validation = validateConfig(document);
+        if (!validation.valid) throw new Error(validation.errors.join("\n"));
+      }
+    }
+  ];
 }
 
 export function migrateConfig(input) {

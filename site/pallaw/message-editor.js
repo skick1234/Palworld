@@ -6,7 +6,7 @@ import {
   enabledMessageOutputCount,
   formatTemplate,
   resolveAreaMessages
-} from "./rules-core.js?v=1";
+} from "./rules-core.js?v=2";
 
 export function ensureMessageOverride(config, area, eventId) {
   area.messages ||= {};
@@ -65,7 +65,7 @@ export function createMessageEditor({ getConfig, mutate, escapeHtml, getAreaKey 
   function render(messages, area = null, selectedEventId = null) {
     const resolved = area ? resolveAreaMessages(getConfig(), area) : messages;
     const previewValues = {
-      region: "Arena Island",
+      region: "Protected Settlement",
       previousRegion: "Wilderness",
       mode: getConfig().messages.modeNames.pvp,
       action: getConfig().messages.actionNames.build,

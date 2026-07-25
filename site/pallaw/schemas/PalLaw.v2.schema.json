@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "PalLaw.schema.json",
+  "$id": "PalLaw.v2.schema.json",
   "title": "PalLaw configuration",
   "description": "PalLaw Configuration Version 2. Regional combat authority can transactionally enable Palworld player damage when a configured PvP area requires it, then applies PalLaw's regional allow and deny policy. Files are valid UTF-8 JSON, at most 4 MiB including an optional BOM, with no duplicate object keys and a maximum container depth of 32.",
   "type": "object",
