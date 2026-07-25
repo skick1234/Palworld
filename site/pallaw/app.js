@@ -25,7 +25,6 @@ import {
   worldToInGameMap,
   worldToMapFraction
 } from "./rules-core.js?v=2";
-import { formatMigrationReport } from "./configuration-migrations.js?v=2";
 import { createMessageEditor } from "./message-editor.js?v=2";
 import { createDocumentStore } from "./document-store.js?v=2";
 
@@ -80,9 +79,8 @@ const documentStore = createDocumentStore({
   historyLimit: 80
 });
 let config = documentStore.value;
-let migrationReport = initialMigrationReport;
-let activeSection = migrationReport.length ? "json" : "regions";
-let workspaceView = migrationReport.length ? "edit" : "list";
+let activeSection = initialMigrationReport.length ? "json" : "regions";
+let workspaceView = initialMigrationReport.length ? "edit" : "list";
 let selectedMessagesPanelId = MESSAGE_EVENTS[0].id;
 let activeMapId = "world";
 let selectedRegionIndex = config.regions.length ? 0 : null;
@@ -292,10 +290,9 @@ const messageEditor = createMessageEditor({
   getAreaKey: areaDisclosureKey
 });
 
-function replaceConfig(next, markDirty = false, report = []) {
+function replaceConfig(next, markDirty = false) {
   documentStore.replace(next, { markDirty });
   config = documentStore.value;
-  migrationReport = report;
   selectedRegionIndex = config.regions.length ? 0 : null;
   inspectorTab = "general";
   editingRegionShape = false;
@@ -1245,14 +1242,9 @@ function renderSettingsInspector() {
 }
 
 function renderJsonInspector() {
-  const reportLines = formatMigrationReport(migrationReport);
-  const report = reportLines.length
-    ? `<div class="section-card migration-report"><div class="section-card-body"><strong>Migration report</strong><ul>${reportLines.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ul></div></div>`
-    : "";
   elements.inspector.innerHTML = `
     <div class="json-editor-shell">
       <div class="inspector-header"><h2>${CONFIG_FILE_NAME}</h2><p>Apply validates the document before replacing the form state. Invalid edits never affect the current configuration.</p></div>
-      ${report}
       <textarea id="rawJsonEditor" class="code-editor" spellcheck="false">${escapeHtml(rawEditorValue)}</textarea>
       <div class="code-actions"><button id="applyJsonButton" type="button" class="button primary">Apply JSON</button><button id="formatJsonButton" type="button" class="button ghost">Format current</button><button id="copyJsonButton" type="button" class="button ghost">Copy</button><button id="resetJsonButton" type="button" class="button ghost">Discard edits</button></div>
     </div>`;
@@ -1268,7 +1260,7 @@ function renderJsonInspector() {
   elements.inspector.querySelector("#applyJsonButton").addEventListener("click", () => {
     try {
       const parsed = parseConfigTextWithMigration(editor.value);
-      replaceConfig(parsed.config, true, parsed.migration.report);
+      replaceConfig(parsed.config, true);
       toast(parsed.migration.changed ? "JSON migrated and applied." : "JSON applied.", "success");
     } catch (error) {
       toast(error.message, "error");
@@ -1407,7 +1399,7 @@ elements.importInput.addEventListener("change", async (event) => {
       activeSection = "json";
       workspaceView = "edit";
     }
-    replaceConfig(parsed.config, parsed.migration.changed, parsed.migration.report);
+    replaceConfig(parsed.config, parsed.migration.changed);
     toast(
       parsed.migration.changed
         ? `${file.name} imported and migrated to Configuration Version ${parsed.migration.targetVersion}.`
