@@ -27,17 +27,23 @@ export const ACTORS = [
   { id: "player", label: "Player" },
   { id: "partnerPal", label: "Partner Pal" },
   { id: "basePal", label: "Base Pal" },
+  {
+    id: "baseStructure",
+    label: "Base Structure",
+    description: "Structures attributed to a base camp or guild.",
+    targetOnly: true
+  },
   { id: "wildPal", label: "Wild Pal" },
   { id: "npc", label: "NPC" },
   {
     id: "structure",
-    label: "Player-built structure",
-    description: "Objects attributed to a player by Palworld.",
+    label: "Player-Built Structure",
+    description: "Objects attributed to a player outside of a base camp.",
     targetOnly: true
   },
   {
     id: "environment",
-    label: "Environmental map object",
+    label: "Environmental Map Object",
     description: "Natural mineral resource nodes, including stone and ore. Trees and other foliage are excluded.",
     targetOnly: true
   }
@@ -449,17 +455,18 @@ export function modeCombat(mode) {
       Object.fromEntries(ACTORS.map((target) => [target.id, true]))
     ])
   );
-  const owned = ["player", "partnerPal", "basePal"];
+  const ownedSources = ["player", "partnerPal", "basePal"];
+  const ownedTargets = ["player", "partnerPal", "basePal", "baseStructure"];
   if (mode === "pve" || mode === "safe") {
-    for (const source of owned) {
-      for (const target of owned) matrix[source][target] = false;
+    for (const source of ownedSources) {
+      for (const target of ownedTargets) matrix[source][target] = false;
     }
   }
   if (mode === "safe") {
     for (const source of Object.keys(matrix)) {
       for (const target of ACTORS.map((actor) => actor.id)) {
-        if (target === "structure" || target === "environment") continue;
-        if (owned.includes(source) || owned.includes(target)) matrix[source][target] = false;
+        if (target === "structure" || target === "baseStructure" || target === "environment") continue;
+        if (ownedSources.includes(source) || ownedTargets.includes(target)) matrix[source][target] = false;
       }
     }
   }
@@ -552,7 +559,7 @@ export function deriveFeatureSummary(input) {
     const matrix = effectiveCombat(area);
     for (const [source, targets] of Object.entries(matrix)) {
       for (const [target, allowed] of Object.entries(targets)) {
-        if (target === "structure" || target === "environment") {
+        if (target === "structure" || target === "baseStructure" || target === "environment") {
           structurePolicyNonVanilla ||= !allowed;
           continue;
         }
