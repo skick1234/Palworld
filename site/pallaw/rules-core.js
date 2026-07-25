@@ -7,13 +7,13 @@ import {
   createBoundedErrorSink,
   parseConfigSource,
   validateRawConfigurationLimits
-} from "./config-source.js?v=4";
+} from "./config-source.js?v=6";
 import {
   addMigrationFallback,
   migrateConfiguration
-} from "./configuration-migrations.js?v=4";
+} from "./configuration-migrations.js?v=6";
 
-export { CONFIG_LIMITS, ConfigSourceError, parseConfigSource } from "./config-source.js?v=4";
+export { CONFIG_LIMITS, ConfigSourceError, parseConfigSource } from "./config-source.js?v=6";
 
 export {
   MAPS,
@@ -21,23 +21,24 @@ export {
   mapFractionToWorld,
   worldToInGameMap,
   worldToMapFraction
-} from "./map-coordinates.js?v=4";
+} from "./map-coordinates.js?v=6";
 
 export const ACTORS = [
-  { id: "player", label: "Player" },
-  { id: "partnerPal", label: "Partner Pal" },
-  { id: "basePal", label: "Base Pal" },
+  { id: "player", label: "Player", description: "A player character." },
+  { id: "partnerPal", label: "Partner Pal", description: "A Pal currently partnered with and controlled by a player." },
+  { id: "basePal", label: "Base Pal", description: "A Pal assigned to a base camp." },
   {
     id: "baseStructure",
     label: "Base Structure",
     description: "Structures attributed to a base camp or guild, including defensive structures when Palworld reports the structure as the responsible damage source.",
     mapObject: true
   },
-  { id: "wildPal", label: "Wild Pal" },
-  { id: "npc", label: "NPC" },
+  { id: "wildPal", label: "Wild Pal", description: "A wild Pal not owned by a player or base." },
+  { id: "npc", label: "NPC", description: "A non-player human character." },
   {
     id: "structure",
     label: "Player-Built Structure",
+    matrixLabel: "Structure",
     description: "Objects attributed to a player outside of a base camp.",
     mapObject: true,
     targetOnly: true
@@ -45,6 +46,7 @@ export const ACTORS = [
   {
     id: "environment",
     label: "Environmental Map Object",
+    matrixLabel: "Environment",
     description: "Natural mineral resource nodes, including stone and ore. Trees and other foliage are excluded.",
     mapObject: true,
     targetOnly: true
@@ -475,8 +477,17 @@ export function modeCombat(mode) {
   return matrix;
 }
 
-export function effectiveCombat(area) {
-  const matrix = modeCombat(area?.mode || "pve");
+function resolveCombat(area) {
+  const preset = modeCombat(area?.mode || "pve");
+  const matrix = Object.fromEntries(
+    Object.entries(preset).map(([source, targets]) => [source, { ...targets }])
+  );
+  const overridden = Object.fromEntries(
+    Object.entries(preset).map(([source, targets]) => [
+      source,
+      Object.fromEntries(Object.keys(targets).map((target) => [target, false]))
+    ])
+  );
   for (const entry of area?.combat || []) {
     const sources = normalizeSelection(entry.source);
     const targets = normalizeSelection(entry.target);
@@ -486,40 +497,26 @@ export function effectiveCombat(area) {
       for (const target of targets) {
         if (!Object.hasOwn(matrix[source], target)) continue;
         matrix[source][target] = allowed;
+        overridden[source][target] = true;
         if (entry.bidirectional && matrix[target] && Object.hasOwn(matrix[target], source)) {
           matrix[target][source] = allowed;
+          overridden[target][source] = true;
         }
       }
     }
   }
-  return matrix;
+  return { preset, matrix, overridden };
 }
 
-function finalMatchingCombatEntry(area, source, target) {
-  const combat = Array.isArray(area?.combat) ? area.combat : [];
-  for (let index = combat.length - 1; index >= 0; index -= 1) {
-    const entry = combat[index];
-    if (normalizeSelection(entry?.source).includes(source) &&
-        normalizeSelection(entry?.target).includes(target)) {
-      return { entry, index };
-    }
-  }
-  return null;
-}
-
-function isPreciseQuickOverride(entry, source, target) {
-  const sources = normalizeSelection(entry?.source);
-  const targets = normalizeSelection(entry?.target);
-  return sources.length === 1 && sources[0] === source &&
-    targets.length === 1 && targets[0] === target &&
-    entry?.bidirectional !== true && typeof entry?.allow === "boolean" &&
-    !Object.hasOwn(entry, "damage");
+export function effectiveCombat(area) {
+  return resolveCombat(area).matrix;
 }
 
 export function quickCombatOverride(area, source, target) {
-  const match = finalMatchingCombatEntry(area, source, target);
-  if (!match || !isPreciseQuickOverride(match.entry, source, target)) return "default";
-  return match.entry.allow ? "allow" : "deny";
+  const resolution = resolveCombat(area);
+  if (!resolution.matrix[source] || !Object.hasOwn(resolution.matrix[source], target)) return "default";
+  if (!resolution.overridden[source][target]) return "default";
+  return resolution.matrix[source][target] ? "allow" : "deny";
 }
 
 export function setQuickCombatOverride(area, source, target, value) {
@@ -529,20 +526,26 @@ export function setQuickCombatOverride(area, source, target, value) {
   if (!["default", "allow", "deny"].includes(value)) {
     throw new TypeError("Quick combat override must be default, allow, or deny.");
   }
+  if (!SOURCE_ACTOR_IDS.has(source) || !ACTOR_IDS.has(target)) {
+    throw new TypeError("Quick combat override requires a known source and target actor.");
+  }
 
-  area.combat = Array.isArray(area.combat) ? area.combat : [];
-  const match = finalMatchingCombatEntry(area, source, target);
-  if (match && isPreciseQuickOverride(match.entry, source, target)) {
-    area.combat.splice(match.index, 1);
-  }
-  if (value !== "default") {
-    area.combat.push({
-      source: [source],
-      target: [target],
-      allow: value === "allow",
-      bidirectional: false
-    });
-  }
+  const resolution = resolveCombat(area);
+  resolution.overridden[source][target] = value !== "default";
+  resolution.matrix[source][target] = value === "default"
+    ? resolution.preset[source][target]
+    : value === "allow";
+
+  area.combat = ACTORS.filter((actor) => !actor.targetOnly).flatMap((sourceActor) =>
+    ACTORS.flatMap((targetActor) => resolution.overridden[sourceActor.id][targetActor.id]
+      ? [{
+          source: [sourceActor.id],
+          target: [targetActor.id],
+          allow: resolution.matrix[sourceActor.id][targetActor.id],
+          bidirectional: false
+        }]
+      : [])
+  );
 }
 
 export function deriveFeatureSummary(input) {

@@ -164,7 +164,7 @@ An action set to **Default** in Rules Studio is omitted from `actions` and uses 
 
 ## Combat overrides
 
-Combat overrides are ordered and applied after the mode. Later matching entries win. A relationship set to **Default** in Rules Studio has no dedicated quick override: its effective value comes from any remaining ordered override, or from the mode preset when none matches. Wilderness and each region may contain at most 128 raw combat entries.
+Combat overrides are ordered and applied after the mode. Later matching entries win. Rules Studio presents the resulting relationships as an editable matrix. When a matrix cell is changed, grouped and bidirectional entries are normalized into deterministic one-source, one-target entries while preserving every effective relationship. A cell set to **Default** removes its explicit entry and restores the selected mode preset for that relationship. Wilderness and each region may contain at most 128 raw combat entries; the matrix editor needs at most 48.
 
 ```json
 "combat": [

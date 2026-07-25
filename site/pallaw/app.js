@@ -18,15 +18,14 @@ import {
   parseConfigBytesWithMigration,
   parseConfigTextWithMigration,
   quickCombatOverride,
-  resolveAreaMessages,
   setQuickCombatOverride,
   stringifyConfig,
   validateConfig,
   worldToInGameMap,
   worldToMapFraction
-} from "./rules-core.js?v=4";
-import { createMessageEditor } from "./message-editor.js?v=4";
-import { createDocumentStore } from "./document-store.js?v=4";
+} from "./rules-core.js?v=6";
+import { createMessageEditor } from "./message-editor.js?v=6";
+import { createDocumentStore } from "./document-store.js?v=6";
 
 const STORAGE_KEY = "pallaw.studio.v1";
 
@@ -344,6 +343,7 @@ function renderStatus(validation) {
 function renderWorkspace() {
   elements.workspace.dataset.section = activeSection;
   elements.workspace.dataset.view = workspaceView;
+  elements.workspace.dataset.layout = ["regions", "messages"].includes(activeSection) ? "split" : "single";
   const views = activeSection === "regions"
     ? [["list", "Regions"], ["map", "Map"]]
     : activeSection === "messages"
@@ -507,11 +507,7 @@ function renderRegionLayers() {
     layer.on("click", (event) => {
       L.DomEvent.stopPropagation(event);
       if (suppressRegionClick || index === selectedRegionIndex) return;
-      selectedRegionIndex = index;
-      activeSection = "regions";
-      inspectorTab = "general";
-      editingRegionShape = false;
-      renderAll();
+      selectRegion(index, { revealInList: true });
     });
     regionLayers.set(index, layer);
   });
@@ -657,15 +653,31 @@ function cancelDrawing(render = true) {
   if (render) renderRegionLayers();
 }
 
-function selectRegion(index) {
+function scrollSelectedRegionIntoView() {
+  if (selectedRegionIndex == null) return;
+  const card = elements.sidebar
+    .querySelector(`[data-region-select="${selectedRegionIndex}"]`)
+    ?.closest(".region-card");
+  if (!card) return;
+  const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+  card.scrollIntoView({ block: "nearest", behavior });
+}
+
+function selectRegion(index, { revealInList = false } = {}) {
   if (!config.regions[index]) return;
   selectedRegionIndex = index;
   editingRegionShape = false;
   activeSection = "regions";
   inspectorTab = "general";
   const region = config.regions[index];
+  if (revealInList) {
+    const query = regionSearch.trim().toLowerCase();
+    const searchable = `${region.name} ${region.map} ${region.mode}`.toLowerCase();
+    if (query && !searchable.includes(query)) regionSearch = "";
+  }
   if (region.map !== activeMapId) switchMap(region.map);
   else renderAll();
+  if (revealInList) window.requestAnimationFrame(scrollSelectedRegionIntoView);
 }
 
 function openRegionEditor(index, trigger) {
@@ -742,12 +754,6 @@ function renderRegionSidebar() {
   const visible = config.regions
     .map((region, index) => ({ region, index }))
     .filter(({ region }) => !query || `${region.name} ${region.map} ${region.mode}`.toLowerCase().includes(query));
-  const wildernessMessages = resolveAreaMessages(config, config.wilderness);
-  const wildernessChannels = MESSAGE_EVENTS.reduce((count, event) => {
-    const message = wildernessMessages[event.id];
-    return count + (message.enabled && enabledMessageOutputCount(message) > 0 ? 1 : 0);
-  }, 0);
-
   elements.sidebar.innerHTML = `
     <div class="panel-heading"><div><h2>Regions</h2><p>Later polygon entries win overlaps. The Wilderness applies only when none match.</p></div></div>
     <div class="search-row"><input id="regionSearch" type="search" placeholder="Search regions" value="${escapeHtml(regionSearch)}"></div>
@@ -758,10 +764,9 @@ function renderRegionSidebar() {
             <span class="region-card-title">${escapeHtml(config.wilderness.name)}</span>
             ${modeBadge(config.wilderness.mode)}
           </span>
-          <span class="region-meta"><span>${config.wilderness.combat.length} combat overrides</span><span>${wildernessChannels} message events active</span></span>
         </button>
         <div class="region-card-footer wilderness-footer">
-          <span class="wilderness-priority-note">Outside polygon priority</span>
+          <span class="wilderness-kind-label">${config.wilderness.name.trim().toLocaleLowerCase() === "wilderness" ? "Outside region" : "Wilderness"}</span>
           <div class="region-card-actions">
             <button type="button" class="region-card-icon settings" data-wilderness-settings title="Wilderness settings" aria-label="Open settings for Wilderness ${escapeHtml(config.wilderness.name)}">
               <span class="region-card-icon-glyph" aria-hidden="true">⚙︎</span>
@@ -1012,131 +1017,161 @@ function bindActions(container, areaGetter) {
 }
 
 function combatPolicyLabel(allowed) {
-  return allowed ? "Allowed" : "Denied";
+  return allowed ? "Allow" : "Deny";
 }
 
-function renderMapObjectRules(area) {
-  const matrix = effectiveCombat(area);
+function matrixActorLabel(actor) {
+  return actor.matrixLabel || actor.label;
+}
+
+function nextCombatOverride(value) {
+  if (value === "default") return "allow";
+  if (value === "allow") return "deny";
+  return "default";
+}
+
+function renderMatrixActorHeader(actor) {
+  const description = actor.description || actor.label;
+  return `<span class="matrix-actor-label" tabindex="0" data-matrix-actor="${actor.id}" aria-label="${escapeHtml(`${actor.label}. ${description}`)}" title="${escapeHtml(`${actor.label}: ${description}`)}">${escapeHtml(matrixActorLabel(actor))}</span>`;
+}
+
+function combatOverrideCount(area) {
   const sources = ACTORS.filter((actor) => !actor.targetOnly);
-  const targets = ACTORS.filter((actor) => actor.mapObject);
-  return targets.map((target) => `
-    <div class="section-card map-object-rules">
-      <div class="section-card-header"><div><h3>${escapeHtml(target.label)}</h3><p>${escapeHtml(target.description)}</p></div></div>
-      <div class="section-card-body"><div class="override-grid">${sources.map((source) => {
-    const raw = quickCombatOverride(area, source.id, target.id);
-    const effective = matrix[source.id]?.[target.id] ?? 0;
-    return `<div class="override-row">
-          <div class="checkbox-copy"><strong>${escapeHtml(source.label)}</strong><span>Effective: ${combatPolicyLabel(effective)}.</span></div>
-          <select data-quick-combat-source="${source.id}" data-quick-combat-target="${target.id}" class="${raw === "default" ? "tri-default" : raw === "allow" ? "tri-allow" : "tri-deny"}">
-            <option value="default" ${raw === "default" ? "selected" : ""}>Default</option>
-            <option value="allow" ${raw === "allow" ? "selected" : ""}>Allow</option>
-            <option value="deny" ${raw === "deny" ? "selected" : ""}>Deny</option>
-          </select>
-        </div>`;
-  }).join("")}</div></div>
-    </div>`).join("");
-}
-
-function bindMapObjectRules(container, areaGetter) {
-  container.querySelectorAll("[data-quick-combat-source]").forEach((select) => {
-    select.addEventListener("change", () => commit(() => {
-      setQuickCombatOverride(areaGetter(), select.dataset.quickCombatSource, select.dataset.quickCombatTarget, select.value);
-    }));
-  });
-}
-
-function renderRules(area) {
-  const combatInactive = !config.regionalCombat.enabled;
-  return `<div class="rules-stack">
-    ${combatInactive ? '<p class="help">Combat rules are currently inactive. Level and world-action rules remain enabled.</p>' : ""}
-    <div class="section-card rules-actions">
-      <div class="section-card-header"><div><h3>Player actions</h3><p>Control building, dismantling, mounts, and other regional actions.</p></div></div>
-      <div class="section-card-body">${renderActions(area)}</div>
-    </div>
-    ${renderMapObjectRules(area)}
-    <div class="rules-advanced-heading"><h3>Advanced combat</h3><p>Define ordered allow or deny relationships between actors.</p></div>
-    ${renderCombat(area)}
-  </div>`;
-}
-
-function bindRules(container, areaGetter) {
-  bindActions(container, areaGetter);
-  bindMapObjectRules(container, areaGetter);
-  bindCombat(container, areaGetter);
-}
-
-function actorChips(entry, field, sourceOnly, index) {
-  const selected = new Set(Array.isArray(entry[field]) ? entry[field] : [entry[field]]);
-  return `<div class="actor-picker">${ACTORS.filter((actor) => !sourceOnly || !actor.targetOnly).map((actor) => `
-    <span class="actor-chip"><input id="combat-${index}-${field}-${actor.id}" type="checkbox" data-combat-index="${index}" data-combat-field="${field}" value="${actor.id}" ${selected.has(actor.id) ? "checked" : ""}><label for="combat-${index}-${field}-${actor.id}">${escapeHtml(actor.label)}</label></span>`).join("")}</div>`;
+  return sources.reduce((count, source) =>
+    count + ACTORS.filter((target) => quickCombatOverride(area, source.id, target.id) !== "default").length, 0);
 }
 
 function renderCombatMatrix(area) {
   const matrix = effectiveCombat(area);
   const targets = ACTORS;
   const sources = ACTORS.filter((actor) => !actor.targetOnly);
-  return `<div class="matrix-wrap"><table class="combat-matrix"><thead><tr><th>Source ↓ / Target →</th>${targets.map((target) => `<th>${escapeHtml(target.label)}</th>`).join("")}</tr></thead><tbody>${sources.map((source) => `<tr><th>${escapeHtml(source.label)}</th>${targets.map((target) => {
-    const value = matrix[source.id]?.[target.id] ?? 0;
-    return `<td class="${value > 0 ? "allowed" : "denied"}" title="${escapeHtml(source.label)} → ${escapeHtml(target.label)}">${value > 0 ? "Allow" : "Deny"}</td>`;
-  }).join("")}</tr>`).join("")}</tbody></table></div>`;
-}
-
-function renderCombat(area) {
+  const presetLabel = modeDefinition(area.mode).label;
   return `
-    <p class="help">The mode supplies a complete combat-policy matrix. Ordered allow or deny overrides apply afterward; the last matching entry wins.</p>
-    <div id="combatEntries">${area.combat.length ? area.combat.map((entry, index) => {
-    const decision = entry.allow ? "allow" : "deny";
-    return `<div class="combat-entry">
-        <div class="combat-entry-head"><strong>Override ${index + 1}</strong><div class="order-controls"><button class="order-button" type="button" data-combat-move="-1" data-index="${index}" ${index === 0 ? "disabled" : ""}>↑</button><button class="order-button" type="button" data-combat-move="1" data-index="${index}" ${index === area.combat.length - 1 ? "disabled" : ""}>↓</button><button class="order-button" type="button" data-combat-delete data-index="${index}" title="Delete">×</button></div></div>
-        <label class="field"><span>Source actors</span>${actorChips(entry, "source", true, index)}</label>
-        <label class="field"><span>Target actors</span>${actorChips(entry, "target", false, index)}</label>
-        <div class="inline-fields">
-          <label class="field"><span>Decision</span><select data-combat-decision data-index="${index}"><option value="allow" ${decision === "allow" ? "selected" : ""}>Allow</option><option value="deny" ${decision === "deny" ? "selected" : ""}>Deny</option></select></label>
-        </div>
-        <div class="toggle-row"><div class="checkbox-copy"><strong>Bidirectional</strong><span>Also apply the reverse actor relationship when possible.</span></div><label class="switch"><input data-combat-bidirectional data-index="${index}" type="checkbox" ${entry.bidirectional ? "checked" : ""}><span class="switch-track"></span></label></div>
-      </div>`;
-  }).join("") : '<div class="empty-state"><div><strong>No combat overrides</strong><span>The selected mode is used without exceptions.</span></div></div>'}</div>
-    <div class="code-actions"><button id="addCombatButton" type="button" class="button small primary">Add override</button></div>
-    <div class="section-card"><div class="section-card-header"><h3>Effective matrix</h3></div><div class="section-card-body">${renderCombatMatrix(area)}</div></div>`;
+    <div class="matrix-toolbar">
+      <p>Rows deal damage. Columns receive it. Default follows the ${escapeHtml(presetLabel)} preset.</p>
+    </div>
+    <div class="matrix-wrap"><table class="combat-matrix">
+      <thead><tr><th class="matrix-corner" scope="col">Source / Target</th>${targets.map((target) => `<th scope="col">${renderMatrixActorHeader(target)}</th>`).join("")}</tr></thead>
+      <tbody>${sources.map((source, rowIndex) => `<tr><th scope="row">${renderMatrixActorHeader(source)}</th>${targets.map((target, columnIndex) => {
+    const raw = quickCombatOverride(area, source.id, target.id);
+    const effective = matrix[source.id]?.[target.id] === true;
+    const next = nextCombatOverride(raw);
+    const effectiveLabel = combatPolicyLabel(effective);
+    const primaryLabel = raw === "default" ? "Default" : effectiveLabel;
+    const secondaryLabel = raw === "default" ? effectiveLabel : "Override";
+    const accessibleState = raw === "default" ? `Default, effective ${effectiveLabel}` : `${effectiveLabel} override`;
+    return `<td><button type="button"
+      class="matrix-cell ${effective ? "allowed" : "denied"} ${raw === "default" ? "is-default" : "is-override"}"
+      data-combat-source="${source.id}"
+      data-combat-target="${target.id}"
+      data-combat-value="${raw}"
+      data-combat-row="${rowIndex}"
+      data-combat-column="${columnIndex}"
+      aria-label="${escapeHtml(`${source.label} to ${target.label}: ${accessibleState}. Activate to set ${next}.`)}"
+      title="${escapeHtml(`${source.label} to ${target.label}: ${accessibleState}`)}">
+        <span class="matrix-cell-primary">${primaryLabel}</span>
+        <span class="matrix-cell-secondary">${secondaryLabel}</span>
+      </button></td>`;
+  }).join("")}</tr>`).join("")}</tbody>
+    </table></div>
+    <div id="matrixActorDescription" class="matrix-actor-description">
+      <strong>Actor definitions</strong>
+      <span>Hover or focus a header or matrix button to see what it includes.</span>
+    </div>`;
 }
 
-function bindCombat(container, areaGetter) {
-  container.querySelector("#addCombatButton")?.addEventListener("click", () => commit(() => {
-    areaGetter().combat.push({ source: ["player"], target: ["player"], allow: false, bidirectional: false });
-  }));
-  container.querySelectorAll("[data-combat-field]").forEach((checkbox) => {
-    checkbox.addEventListener("change", () => commit(() => {
-      const area = areaGetter();
-      const entry = area.combat[Number(checkbox.dataset.combatIndex)];
-      const field = checkbox.dataset.combatField;
-      const all = [...container.querySelectorAll(`[data-combat-index="${checkbox.dataset.combatIndex}"][data-combat-field="${field}"]`)]
-        .filter((input) => input.checked)
-        .map((input) => input.value);
-      entry[field] = all;
-    }));
+function bindCombatMatrix(container, areaGetter) {
+  const description = container.querySelector("#matrixActorDescription");
+  const defaultDescription = description?.innerHTML || "";
+  container.querySelectorAll("[data-matrix-actor]").forEach((header) => {
+    const actor = ACTORS.find((entry) => entry.id === header.dataset.matrixActor);
+    const showDescription = () => {
+      if (!description || !actor) return;
+      description.innerHTML = `<strong>${escapeHtml(actor.label)}</strong><span>${escapeHtml(actor.description || actor.label)}</span>`;
+    };
+    const restoreDescription = () => {
+      if (description) description.innerHTML = defaultDescription;
+    };
+    header.addEventListener("mouseenter", showDescription);
+    header.addEventListener("focus", showDescription);
+    header.addEventListener("mouseleave", () => {
+      if (document.activeElement !== header) restoreDescription();
+    });
+    header.addEventListener("blur", restoreDescription);
   });
-  container.querySelectorAll("[data-combat-decision]").forEach((select) => {
-    select.addEventListener("change", () => commit(() => {
-      const entry = areaGetter().combat[Number(select.dataset.index)];
-      entry.allow = select.value === "allow";
-    }));
-  });
-  container.querySelectorAll("[data-combat-bidirectional]").forEach((input) => {
-    input.addEventListener("change", () => commit(() => {
-      areaGetter().combat[Number(input.dataset.index)].bidirectional = input.checked;
-    }));
-  });
-  container.querySelectorAll("[data-combat-delete]").forEach((button) => {
-    button.addEventListener("click", () => commit(() => { areaGetter().combat.splice(Number(button.dataset.index), 1); }));
-  });
-  container.querySelectorAll("[data-combat-move]").forEach((button) => {
+
+  const cells = [...container.querySelectorAll("[data-combat-source][data-combat-target]")];
+  cells.forEach((button) => {
+    const source = ACTORS.find((entry) => entry.id === button.dataset.combatSource);
+    const target = ACTORS.find((entry) => entry.id === button.dataset.combatTarget);
+    const showRelationshipDescription = () => {
+      if (!description || !source || !target) return;
+      const actors = source.id === target.id ? [source] : [source, target];
+      description.innerHTML = `<div class="matrix-definition-list">${actors.map((actor) =>
+        `<strong>${escapeHtml(actor.label)}</strong><span>${escapeHtml(actor.description || actor.label)}</span>`
+      ).join("")}</div>`;
+    };
+    const restoreRelationshipDescription = () => {
+      if (description) description.innerHTML = defaultDescription;
+    };
+    button.addEventListener("mouseenter", showRelationshipDescription);
+    button.addEventListener("focus", showRelationshipDescription);
+    button.addEventListener("mouseleave", () => {
+      if (document.activeElement !== button) restoreRelationshipDescription();
+    });
+    button.addEventListener("blur", restoreRelationshipDescription);
     button.addEventListener("click", () => commit(() => {
-      const area = areaGetter();
-      const index = Number(button.dataset.index);
-      const destination = index + Number(button.dataset.combatMove);
-      [area.combat[index], area.combat[destination]] = [area.combat[destination], area.combat[index]];
+      setQuickCombatOverride(
+        areaGetter(),
+        button.dataset.combatSource,
+        button.dataset.combatTarget,
+        nextCombatOverride(button.dataset.combatValue)
+      );
     }));
+    button.addEventListener("keydown", (event) => {
+      const movement = {
+        ArrowUp: [-1, 0],
+        ArrowDown: [1, 0],
+        ArrowLeft: [0, -1],
+        ArrowRight: [0, 1]
+      }[event.key];
+      if (!movement) return;
+      event.preventDefault();
+      const row = Number(button.dataset.combatRow) + movement[0];
+      const column = Number(button.dataset.combatColumn) + movement[1];
+      container.querySelector(`[data-combat-row="${row}"][data-combat-column="${column}"]`)?.focus();
+    });
   });
+  container.querySelector("#resetCombatMatrixButton")?.addEventListener("click", () => commit(() => {
+    areaGetter().combat = [];
+  }));
+}
+
+function renderRules(area) {
+  const combatInactive = !config.regionalCombat.enabled;
+  const overrideCount = combatOverrideCount(area);
+  return `<div class="rules-stack">
+    ${combatInactive ? '<p class="help combat-inactive">Combat rules are saved but currently inactive. Level and world-action rules remain enabled.</p>' : ""}
+    <div class="section-card rules-actions">
+      <div class="section-card-header"><div><h3>Player actions</h3><p>Control building, dismantling, mounts, and other regional actions.</p></div></div>
+      <div class="section-card-body">${renderActions(area)}</div>
+    </div>
+    <div class="section-card combat-matrix-card">
+      <div class="section-card-header">
+        <div><h3>Combat matrix</h3><p>Choose Default, Allow, or Deny for every combat relationship.</p></div>
+        <div class="matrix-header-actions">
+          <span class="matrix-override-count">${overrideCount} ${overrideCount === 1 ? "override" : "overrides"}</span>
+          <button id="resetCombatMatrixButton" type="button" class="button small ghost" ${overrideCount ? "" : "disabled"}>Reset overrides</button>
+        </div>
+      </div>
+      <div class="section-card-body">${renderCombatMatrix(area)}</div>
+    </div>
+  </div>`;
+}
+
+function bindRules(container, areaGetter) {
+  bindActions(container, areaGetter);
+  bindCombatMatrix(container, areaGetter);
 }
 
 function renderAreaEditor() {
@@ -1146,7 +1181,7 @@ function renderAreaEditor() {
     elements.areaEditorKind.textContent = "Region settings";
     elements.regionEditorTitle.textContent = "Region";
     elements.regionEditorCloseButton.setAttribute("aria-label", "Close region settings");
-    elements.regionEditorContent.innerHTML = '<div class="empty-state"><div><strong>Select or draw a region</strong><span>Each region has a unique name, a mode preset, an editable polygon, and optional advanced overrides.</span></div></div>';
+    elements.regionEditorContent.innerHTML = '<div class="empty-state"><div><strong>Select or draw a region</strong><span>Each region has a unique name, a mode preset, an editable polygon, and optional rule overrides.</span></div></div>';
     return;
   }
   const tabs = [
@@ -1212,7 +1247,7 @@ const SETTING_DEFINITIONS = [
   { group: "Configuration", id: "hotReloadSeconds", label: "Reload interval", description: "Seconds between file timestamp checks.", type: "number", min: 0.1, max: 60, step: 0.1 },
   { group: "Enforcement", scope: "regionalCombat", id: "enabled", label: "Regional combat authority", description: "When enabled, PalLaw manages regional final damage and the Palworld player-damage setting so PvP regions work on a PvP-disabled world. Targeting and attack progression remain vanilla in PalLaw 0.2.0.", type: "boolean" },
   { group: "Enforcement", id: "worldRules", label: "World action rules", description: "Enforce build, dismantle, riding, flying, editing, decay, and level restrictions.", type: "boolean" },
-  { group: "Enforcement", id: "adminBypass", label: "Administrator bypass", description: "Allow administrators to bypass action and level restrictions.", type: "boolean" },
+  { group: "Enforcement", id: "adminBypass", label: "Administrator bypass", description: "Allow administrators to bypass action and level restrictions. Currently not working on 0.2.x", type: "boolean" },
   { group: "Player tracking", id: "playerSweepSeconds", label: "Player sweep interval", description: "Seconds between location, region, mount, and level checks.", type: "number", min: 0.05, max: 10, step: 0.05 },
   { group: "Player tracking", id: "mountGraceSeconds", label: "Mount denial grace period", description: "Safe-dismount seconds for a player who is already mounted when riding becomes denied; new mount attempts are denied immediately.", type: "number", min: 0, max: 120, step: 0.5 },
   { group: "Diagnostics", id: "debugLogging", label: "Debug logging", description: "Write verbose rule decisions and missing reflected symbols to the UE4SS log.", type: "boolean" }

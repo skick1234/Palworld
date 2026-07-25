@@ -6,7 +6,7 @@ import {
   enabledMessageOutputCount,
   formatTemplate,
   resolveAreaMessages
-} from "./rules-core.js?v=4";
+} from "./rules-core.js?v=6";
 
 export function ensureMessageOverride(config, area, eventId) {
   area.messages ||= {};
@@ -65,7 +65,7 @@ export function createMessageEditor({ getConfig, mutate, escapeHtml, getAreaKey 
   function render(messages, area = null, selectedEventId = null) {
     const resolved = area ? resolveAreaMessages(getConfig(), area) : messages;
     const previewValues = {
-      region: "Protected Settlement",
+      region: area?.name || "Wilderness",
       previousRegion: "Wilderness",
       mode: getConfig().messages.modeNames.pvp,
       action: getConfig().messages.actionNames.build,
@@ -96,12 +96,14 @@ export function createMessageEditor({ getConfig, mutate, escapeHtml, getAreaKey 
         </div>`;
       }).join("");
 
-      return `<details class="message-event ${selectedEventId ? "selected-event" : ""}" data-message-event="${escapeHtml(event.id)}" ${selectedEventId || expanded.has(event.id) ? "open" : ""}>
+      return `<details class="message-event ${selectedEventId ? "selected-event" : ""} ${usesDefault ? "uses-default" : ""}" data-message-event="${escapeHtml(event.id)}" ${selectedEventId || expanded.has(event.id) ? "open" : ""}>
         <summary><strong>${escapeHtml(event.label)}</strong><span>${escapeHtml(stateLabel)}</span>${usesDefault ? '<span class="badge">Global</span>' : ""}</summary>
         <div class="message-event-body">
-          ${area ? `<div class="code-actions">${usesDefault ? `<button type="button" class="button small primary" data-message-customize="${escapeHtml(event.id)}">Customize for ${escapeHtml(area.name)}</button>` : `<button type="button" class="button small ghost" data-message-reset="${escapeHtml(event.id)}">Use global defaults</button>`}</div>` : ""}
-          <div class="toggle-row"><div class="checkbox-copy"><strong>Enable event</strong><span>${escapeHtml(event.description)}</span></div><label class="switch"><input data-message-enabled="${escapeHtml(event.id)}" type="checkbox" ${message.enabled ? "checked" : ""} ${usesDefault ? "disabled" : ""}><span class="switch-track"></span></label></div>
-          <label class="field"><span>Cooldown seconds</span><input data-message-cooldown="${escapeHtml(event.id)}" type="number" min="0" max="300" step="0.1" value="${message.cooldownSeconds}" ${usesDefault ? "disabled" : ""}></label>
+          ${area ? `<div class="toggle-row message-override-toggle"><div class="checkbox-copy"><strong>Override global message</strong><span>Use custom settings for ${escapeHtml(area.name)}.</span></div><label class="switch"><input data-message-override="${escapeHtml(event.id)}" type="checkbox" ${usesDefault ? "" : "checked"}><span class="switch-track"></span></label></div>` : ""}
+          <div class="event-settings-card">
+            <div class="toggle-row"><div class="checkbox-copy"><strong>Enable event</strong><span>${escapeHtml(event.description)}</span></div><label class="switch"><input data-message-enabled="${escapeHtml(event.id)}" type="checkbox" ${message.enabled ? "checked" : ""} ${usesDefault ? "disabled" : ""}><span class="switch-track"></span></label></div>
+            <label class="field event-cooldown-row"><span>Cooldown seconds</span><input data-message-cooldown="${escapeHtml(event.id)}" type="number" min="0" max="300" step="0.1" value="${message.cooldownSeconds}" ${usesDefault ? "disabled" : ""}></label>
+          </div>
           <div class="channel-card">
             <div class="channel-header"><div><strong>System chat</strong><small>Private system-chat message for the affected player.</small></div><label class="switch"><input data-chat-enabled="${escapeHtml(event.id)}" type="checkbox" ${message.chat.enabled ? "checked" : ""} ${usesDefault ? "disabled" : ""}><span class="switch-track"></span></label></div>
             <label class="field"><span>Message</span><textarea data-chat-text="${escapeHtml(event.id)}" maxlength="512" ${usesDefault ? "disabled" : ""}>${escapeHtml(message.chat.text)}</textarea></label>
@@ -126,11 +128,9 @@ export function createMessageEditor({ getConfig, mutate, escapeHtml, getAreaKey 
     }));
 
     container.querySelector("#messagesEnabled")?.addEventListener("change", (event) => mutate(() => { messages.enabled = event.target.checked; }));
-    container.querySelectorAll("[data-message-customize]").forEach((button) => button.addEventListener("click", () => mutate(() => {
-      ensureMessageOverride(getConfig(), area, button.dataset.messageCustomize);
-    })));
-    container.querySelectorAll("[data-message-reset]").forEach((button) => button.addEventListener("click", () => mutate(() => {
-      delete area.messages[button.dataset.messageReset];
+    container.querySelectorAll("[data-message-override]").forEach((input) => input.addEventListener("change", () => mutate(() => {
+      if (input.checked) ensureMessageOverride(getConfig(), area, input.dataset.messageOverride);
+      else delete area.messages[input.dataset.messageOverride];
     })));
 
     const targetMessage = (eventId) => area
