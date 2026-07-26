@@ -8,6 +8,18 @@ import {
   resolveAreaMessages
 } from "./rules-core.js?v=6";
 
+export function renderControlRow({ label, description = "", control, labelControl = false, className = "" }, escapeHtml) {
+  const tag = labelControl ? "label" : "div";
+  return `<${tag} class="control-row ${className}">
+    <span class="checkbox-copy"><strong>${escapeHtml(label)}</strong>${description ? `<span>${escapeHtml(description)}</span>` : ""}</span>
+    ${control}
+  </${tag}>`;
+}
+
+export function renderControlRowGroup(rows, className = "") {
+  return `<div class="control-row-group ${className}">${rows.join("")}</div>`;
+}
+
 export function ensureMessageOverride(config, area, eventId) {
   area.messages ||= {};
   if (!Object.hasOwn(area.messages, eventId)) {
@@ -38,7 +50,7 @@ function messagePreview(message, values, escapeHtml) {
     const alert = message.alerts[presentation.id];
     if (!alert.enabled) continue;
     const tone = presentation.id === "brief" ? alert.tone : "normal";
-    outputs.push(`<div class="preview-alert ${escapeHtml(presentation.id)} tone-${escapeHtml(tone)}"><span class="preview-alert-icon" aria-hidden="true"><i>!</i></span><span class="preview-alert-text">${escapeHtml(formatTemplate(alert.text, values))}</span></div>`);
+    outputs.push(`<div class="preview-alert ${escapeHtml(presentation.id)} tone-${escapeHtml(tone)}"><span class="preview-alert-icon" aria-hidden="true"><span class="hero-icon hero-icon-exclamation-circle"></span></span><span class="preview-alert-text">${escapeHtml(formatTemplate(alert.text, values))}</span></div>`);
   }
   return `<div class="preview-box"><div class="eyebrow">Preview</div>${outputs.length ? outputs.join("") : '<div class="preview-empty">All outputs are disabled.</div>'}</div>`;
 }
@@ -67,7 +79,8 @@ export function createMessageEditor({ getConfig, mutate, escapeHtml, getAreaKey 
     const previewValues = {
       region: area?.name || "Wilderness",
       previousRegion: "Wilderness",
-      mode: getConfig().messages.modeNames.pvp,
+      mode: getConfig().modes.find((mode) => mode.id === area?.mode)?.name ||
+        getConfig().modes[0]?.name || "",
       action: getConfig().messages.actionNames.build,
       minimumLevel: 20,
       playerLevel: 12
@@ -82,6 +95,19 @@ export function createMessageEditor({ getConfig, mutate, escapeHtml, getAreaKey 
       const message = resolved[event.id];
       const outputCount = enabledMessageOutputCount(message);
       const stateLabel = usesDefault ? "Default" : message.enabled ? `${outputCount} output${outputCount === 1 ? "" : "s"}` : "Disabled";
+      const eventSettings = renderControlRowGroup([
+        renderControlRow({
+          label: "Enable event",
+          description: event.description,
+          control: `<label class="switch"><input data-message-enabled="${escapeHtml(event.id)}" type="checkbox" ${message.enabled ? "checked" : ""} ${usesDefault ? "disabled" : ""}><span class="switch-track"></span></label>`
+        }, escapeHtml),
+        renderControlRow({
+          label: "Cooldown seconds",
+          labelControl: true,
+          className: "control-row-number",
+          control: `<input data-message-cooldown="${escapeHtml(event.id)}" type="number" min="0" max="300" step="0.1" value="${message.cooldownSeconds}" ${usesDefault ? "disabled" : ""}>`
+        }, escapeHtml)
+      ], "event-settings-card");
       const alerts = ALERT_PRESENTATIONS.map((presentation) => {
         const alert = message.alerts[presentation.id];
         const toneOptions = ALERT_TONES.map((tone) => `<option value="${escapeHtml(tone.id)}" ${alert.tone === tone.id ? "selected" : ""}>${escapeHtml(tone.label)}</option>`).join("");
@@ -100,10 +126,7 @@ export function createMessageEditor({ getConfig, mutate, escapeHtml, getAreaKey 
         <summary><strong>${escapeHtml(event.label)}</strong><span>${escapeHtml(stateLabel)}</span>${usesDefault ? '<span class="badge">Global</span>' : ""}</summary>
         <div class="message-event-body">
           ${area ? `<div class="toggle-row message-override-toggle"><div class="checkbox-copy"><strong>Override global message</strong><span>Use custom settings for ${escapeHtml(area.name)}.</span></div><label class="switch"><input data-message-override="${escapeHtml(event.id)}" type="checkbox" ${usesDefault ? "" : "checked"}><span class="switch-track"></span></label></div>` : ""}
-          <div class="event-settings-card">
-            <div class="toggle-row"><div class="checkbox-copy"><strong>Enable event</strong><span>${escapeHtml(event.description)}</span></div><label class="switch"><input data-message-enabled="${escapeHtml(event.id)}" type="checkbox" ${message.enabled ? "checked" : ""} ${usesDefault ? "disabled" : ""}><span class="switch-track"></span></label></div>
-            <label class="field event-cooldown-row"><span>Cooldown seconds</span><input data-message-cooldown="${escapeHtml(event.id)}" type="number" min="0" max="300" step="0.1" value="${message.cooldownSeconds}" ${usesDefault ? "disabled" : ""}></label>
-          </div>
+          ${eventSettings}
           <div class="channel-card">
             <div class="channel-header"><div><strong>System chat</strong><small>Private system-chat message for the affected player.</small></div><label class="switch"><input data-chat-enabled="${escapeHtml(event.id)}" type="checkbox" ${message.chat.enabled ? "checked" : ""} ${usesDefault ? "disabled" : ""}><span class="switch-track"></span></label></div>
             <label class="field"><span>Message</span><textarea data-chat-text="${escapeHtml(event.id)}" maxlength="512" ${usesDefault ? "disabled" : ""}>${escapeHtml(message.chat.text)}</textarea></label>

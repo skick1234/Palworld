@@ -2,14 +2,15 @@ import {
   ACTIONS,
   ACTORS,
   CONFIG_FILE_NAME,
+  FAST_TRAVEL_POLICIES,
   MAPS,
   MESSAGE_EVENTS,
-  MODES,
   areaAt,
   clone,
   createDefaultConfig,
   effectiveActions,
   effectiveCombat,
+  effectiveMinimumLevel,
   enabledMessageOutputCount,
   evaluateCombat,
   hydrateConfig,
@@ -24,7 +25,7 @@ import {
   worldToInGameMap,
   worldToMapFraction
 } from "./rules-core.js?v=6";
-import { createMessageEditor } from "./message-editor.js?v=6";
+import { createMessageEditor, renderControlRow, renderControlRowGroup } from "./message-editor.js?v=6";
 import { createDocumentStore } from "./document-store.js?v=6";
 
 const STORAGE_KEY = "pallaw.studio.v1";
@@ -32,6 +33,8 @@ const STORAGE_KEY = "pallaw.studio.v1";
 const elements = {
   undoButton: document.querySelector("#undoButton"),
   redoButton: document.querySelector("#redoButton"),
+  topUndoButton: document.querySelector("#topUndoButton"),
+  topRedoButton: document.querySelector("#topRedoButton"),
   newButton: document.querySelector("#newButton"),
   importButton: document.querySelector("#importButton"),
   exportButton: document.querySelector("#exportButton"),
@@ -59,6 +62,12 @@ const elements = {
   regionEditorContent: document.querySelector("#regionEditorContent"),
   regionEditorCloseButton: document.querySelector("#regionEditorCloseButton"),
   regionEditorDoneButton: document.querySelector("#regionEditorDoneButton"),
+  modeDuplicateDialog: document.querySelector("#modeDuplicateDialog"),
+  modeDuplicateName: document.querySelector("#modeDuplicateName"),
+  modeDuplicateId: document.querySelector("#modeDuplicateId"),
+  modeReplacementDialog: document.querySelector("#modeReplacementDialog"),
+  modeReplacementMessage: document.querySelector("#modeReplacementMessage"),
+  modeReplacementSelect: document.querySelector("#modeReplacementSelect"),
   confirmDialog: document.querySelector("#confirmDialog"),
   confirmTitle: document.querySelector("#confirmTitle"),
   confirmMessage: document.querySelector("#confirmMessage")
@@ -83,8 +92,10 @@ let workspaceView = initialMigrationReport.length ? "edit" : "list";
 let selectedMessagesPanelId = MESSAGE_EVENTS[0].id;
 let activeMapId = "world";
 let selectedRegionIndex = config.regions.length ? 0 : null;
+let selectedModeIndex = 0;
 let inspectorTab = "general";
 let regionSearch = "";
+let modeSearch = "";
 let rawEditorValue = documentStore.serialized;
 let drawing = false;
 let drawPoints = [];
@@ -335,20 +346,26 @@ function download(name, text, type = "application/json") {
 }
 
 function renderStatus(validation) {
-  elements.undoButton.disabled = !documentStore.canUndo;
-  elements.redoButton.disabled = !documentStore.canRedo;
+  [elements.undoButton, elements.topUndoButton].forEach((button) => {
+    button.disabled = !documentStore.canUndo;
+  });
+  [elements.redoButton, elements.topRedoButton].forEach((button) => {
+    button.disabled = !documentStore.canRedo;
+  });
   elements.exportButton.disabled = !validation.valid;
 }
 
 function renderWorkspace() {
   elements.workspace.dataset.section = activeSection;
   elements.workspace.dataset.view = workspaceView;
-  elements.workspace.dataset.layout = ["regions", "messages"].includes(activeSection) ? "split" : "single";
+  elements.workspace.dataset.layout = ["regions", "modes", "messages"].includes(activeSection) ? "split" : "single";
   const views = activeSection === "regions"
     ? [["list", "Regions"], ["map", "Map"]]
-    : activeSection === "messages"
-      ? [["list", "Events"], ["edit", selectedMessagesPanelId === LOCALIZATION_PANEL_ID ? "Localization" : "Message"]]
-      : [];
+    : activeSection === "modes"
+      ? [["list", "Modes"], ["edit", "Mode"]]
+      : activeSection === "messages"
+        ? [["list", "Events"], ["edit", selectedMessagesPanelId === LOCALIZATION_PANEL_ID ? "Localization" : "Message"]]
+        : [];
   elements.workspaceViewNav.innerHTML = views.map(([id, label]) => `<button type="button" data-workspace-view="${id}" class="${workspaceView === id ? "active" : ""}">${label}</button>`).join("");
   elements.workspaceViewNav.hidden = !views.length;
   elements.workspaceViewNav.querySelectorAll("[data-workspace-view]").forEach((button) => {
@@ -408,11 +425,12 @@ function renderBaseLayer() {
 }
 
 function polygonStyle(region, selected) {
+  const color = modeDefinition(region.mode, config).color;
   return {
     className: selected ? "region-polygon selected-region-polygon" : "region-polygon",
-    color: region.color,
-    fillColor: region.color,
-    fillOpacity: region.enabled === false ? 0.06 : (selected ? 0.28 : 0.16),
+    color,
+    fillColor: color,
+    fillOpacity: region.enabled === false ? 0.06 : (selected ? 0.28 : 0.2),
     opacity: region.enabled === false ? 0.45 : 0.95,
     weight: selected ? 4 : 2,
     dashArray: region.enabled === false ? "7 7" : null
@@ -499,7 +517,7 @@ function renderRegionLayers() {
     if (region.map !== activeMapId || region.polygon.length < 3) return;
     const layer = L.polygon(region.polygon.map((point) => worldToLatLng(point)), polygonStyle(region, index === selectedRegionIndex));
     layer.addTo(regionLayerGroup);
-    layer.bindTooltip(`${region.name} · ${modeDefinition(region.mode).label}`, {
+    layer.bindTooltip(`${region.name} · ${modeDefinition(region.mode, config).name}`, {
       permanent: false,
       direction: "center",
       className: "region-label"
@@ -623,10 +641,9 @@ function finishDrawing() {
   const region = {
     name: nextRegionName(),
     enabled: true,
-    mode: "pve",
+    mode: config.modes[0].id,
     minimumLevel: null,
     map: activeMapId,
-    color: modeDefinition("pve").color,
     polygon: drawPoints.map((latlng) => latLngToWorld(latlng)),
     actions: {},
     combat: [],
@@ -655,9 +672,7 @@ function cancelDrawing(render = true) {
 
 function scrollSelectedRegionIntoView() {
   if (selectedRegionIndex == null) return;
-  const card = elements.sidebar
-    .querySelector(`[data-region-select="${selectedRegionIndex}"]`)
-    ?.closest(".region-card");
+  const card = elements.sidebar.querySelector(`[data-region-card="${selectedRegionIndex}"]`);
   if (!card) return;
   const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
   card.scrollIntoView({ block: "nearest", behavior });
@@ -745,78 +760,118 @@ async function deleteRegion(index) {
 }
 
 function modeBadge(mode) {
-  const definition = modeDefinition(mode);
-  return `<span class="badge ${escapeHtml(mode)}">${escapeHtml(definition.label)}</span>`;
+  const definition = modeDefinition(mode, config);
+  const hex = definition.color;
+  return `<span class="badge mode-badge" style="--mode-color:${escapeHtml(hex)}">${escapeHtml(definition.name)}</span>`;
+}
+
+function heroIcon(name, className = "") {
+  return `<span class="hero-icon hero-icon-${name} ${className}" aria-hidden="true"></span>`;
+}
+
+function sidebarCardHeader(title, accessory = "") {
+  return `<span class="sidebar-card-header"><span class="sidebar-card-title">${escapeHtml(title)}</span>${accessory}</span>`;
+}
+
+function sidebarCardDetail(...parts) {
+  return `<span class="sidebar-card-detail">${parts.map(escapeHtml).join(" · ")}</span>`;
+}
+
+function bindCardSelection(card, actionSelector, select) {
+  const activate = (event) => {
+    if (event.target.closest(actionSelector)) return;
+    select();
+  };
+  card.addEventListener("click", activate);
+  card.addEventListener("keydown", (event) => {
+    if (event.target !== card || (event.key !== "Enter" && event.key !== " ")) return;
+    event.preventDefault();
+    select();
+  });
 }
 
 function renderRegionSidebar() {
   const query = regionSearch.trim().toLowerCase();
+  const mountedFilter = elements.sidebar.querySelector("#regionSearch");
   const visible = config.regions
     .map((region, index) => ({ region, index }))
-    .filter(({ region }) => !query || `${region.name} ${region.map} ${region.mode}`.toLowerCase().includes(query));
-  elements.sidebar.innerHTML = `
+    .map(({ region, index }) => ({
+      region,
+      index,
+      hidden: Boolean(query && !`${region.name} ${region.map} ${region.mode}`.toLowerCase().includes(query))
+    }));
+  const markup = `
     <div class="panel-heading"><div><h2>Regions</h2><p>Later polygon entries win overlaps. The Wilderness applies only when none match.</p></div></div>
     <div class="search-row"><input id="regionSearch" type="search" placeholder="Search regions" value="${escapeHtml(regionSearch)}"></div>
     <div class="list-stack">
-      <div class="region-card wilderness-card" data-wilderness>
-        <button type="button" class="region-card-select" data-wilderness-open aria-label="Edit Wilderness ${escapeHtml(config.wilderness.name)}">
-          <span class="region-card-top">
-            <span class="region-card-title">${escapeHtml(config.wilderness.name)}</span>
-            ${modeBadge(config.wilderness.mode)}
-          </span>
-        </button>
-        <div class="region-card-footer wilderness-footer">
+      <article class="sidebar-card wilderness-card" data-wilderness data-wilderness-card tabindex="0" aria-label="Edit Wilderness ${escapeHtml(config.wilderness.name)}">
+        ${sidebarCardHeader(config.wilderness.name, modeBadge(config.wilderness.mode))}
+        <footer class="sidebar-card-footer wilderness-footer">
           <span class="wilderness-kind-label">${config.wilderness.name.trim().toLocaleLowerCase() === "wilderness" ? "Outside region" : "Wilderness"}</span>
-          <div class="region-card-actions">
-            <button type="button" class="region-card-icon settings" data-wilderness-settings title="Wilderness settings" aria-label="Open settings for Wilderness ${escapeHtml(config.wilderness.name)}">
-              <span class="region-card-icon-glyph" aria-hidden="true">⚙︎</span>
+          <div class="sidebar-card-actions">
+            <button type="button" class="sidebar-card-icon settings" data-wilderness-settings title="Wilderness settings" aria-label="Open settings for Wilderness ${escapeHtml(config.wilderness.name)}">
+              ${heroIcon("cog-6-tooth")}
             </button>
           </div>
-        </div>
-      </div>
-      ${visible.map(({ region, index }) => `
-        <div class="region-card ${index === selectedRegionIndex ? "selected" : ""} ${region.enabled === false ? "disabled" : ""}">
-          <button type="button" class="region-card-select" data-region-select="${index}" aria-label="Edit ${escapeHtml(region.name)}">
-            <span class="region-card-top">
-              <span class="color-dot" style="background:${escapeHtml(region.color)};color:${escapeHtml(region.color)}"></span>
-              <span class="region-card-title">${escapeHtml(region.name)}</span>
-              ${modeBadge(region.mode)}
-            </span>
-            <span class="region-meta"><span>${escapeHtml(MAPS.find((entry) => entry.id === region.map)?.label || region.map)}</span><span>${region.polygon.length} vertices</span><span>Order ${index + 1}</span>${region.minimumLevel ? `<span>Level ${region.minimumLevel}+</span>` : ""}</span>
-          </button>
-          <div class="region-card-footer">
+        </footer>
+      </article>
+      ${visible.map(({ region, index, hidden }) => `
+        <article class="sidebar-card ${index === selectedRegionIndex ? "selected" : ""} ${region.enabled === false ? "disabled" : ""}" data-filter-card data-region-card="${index}" tabindex="0" aria-label="Select ${escapeHtml(region.name)}" ${index === selectedRegionIndex ? 'aria-current="true"' : ""} ${hidden ? "hidden" : ""}>
+          ${sidebarCardHeader(region.name, modeBadge(region.mode))}
+          <footer class="sidebar-card-footer">
             <div class="order-controls">
-              <button type="button" class="order-button" data-move="-1" data-index="${index}" title="Move earlier" aria-label="Move ${escapeHtml(region.name)} earlier" ${index === 0 ? "disabled" : ""}>↑</button>
-              <button type="button" class="order-button" data-move="1" data-index="${index}" title="Move later" aria-label="Move ${escapeHtml(region.name)} later" ${index === config.regions.length - 1 ? "disabled" : ""}>↓</button>
+              <button type="button" class="sidebar-card-icon order-button" data-move="-1" data-index="${index}" title="Move earlier" aria-label="Move ${escapeHtml(region.name)} earlier" ${index === 0 ? "disabled" : ""}>${heroIcon("arrow-up")}</button>
+              <button type="button" class="sidebar-card-icon order-button" data-move="1" data-index="${index}" title="Move later" aria-label="Move ${escapeHtml(region.name)} later" ${index === config.regions.length - 1 ? "disabled" : ""}>${heroIcon("arrow-down")}</button>
             </div>
-            <div class="region-card-actions">
-              <button type="button" class="region-card-icon settings" data-region-settings="${index}" title="Region settings" aria-label="Open settings for ${escapeHtml(region.name)}">
-                <span class="region-card-icon-glyph" aria-hidden="true">⚙︎</span>
+            <div class="sidebar-card-actions">
+              <button type="button" class="sidebar-card-icon settings" data-region-settings="${index}" title="Region settings" aria-label="Open settings for ${escapeHtml(region.name)}">
+                ${heroIcon("cog-6-tooth")}
               </button>
-              <button type="button" class="region-card-icon" data-region-duplicate="${index}" title="Duplicate region" aria-label="Duplicate ${escapeHtml(region.name)}">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="11" height="11" rx="2"></rect><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path></svg>
+              <button type="button" class="sidebar-card-icon" data-region-duplicate="${index}" title="Duplicate region" aria-label="Duplicate ${escapeHtml(region.name)}">
+                ${heroIcon("square-2-stack")}
               </button>
-              <button type="button" class="region-card-icon danger" data-region-delete="${index}" title="Delete region" aria-label="Delete ${escapeHtml(region.name)}">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13M10 11v5m4-5v5"></path></svg>
+              <button type="button" class="sidebar-card-icon danger" data-region-delete="${index}" title="Delete region" aria-label="Delete ${escapeHtml(region.name)}">
+                ${heroIcon("trash")}
               </button>
             </div>
-          </div>
-        </div>`).join("")}
+          </footer>
+        </article>`).join("")}
+      <div class="empty-state" data-filter-empty ${visible.some(({ hidden }) => !hidden) ? "hidden" : ""}><div><strong>No matching regions</strong><span>Clear the search to show every region.</span></div></div>
     </div>`;
 
-  elements.sidebar.querySelector("#regionSearch")?.addEventListener("input", (event) => {
-    regionSearch = event.target.value;
-    renderRegionSidebar();
-  });
-  elements.sidebar.querySelector("[data-wilderness-open]")?.addEventListener("click", (event) => {
-    openWildernessEditor(event.currentTarget);
-  });
+  if (mountedFilter) {
+    const template = document.createElement("template");
+    template.innerHTML = markup;
+    elements.sidebar.querySelector(".list-stack")?.replaceWith(template.content.querySelector(".list-stack"));
+  } else {
+    elements.sidebar.innerHTML = markup;
+    elements.sidebar.querySelector("#regionSearch")?.addEventListener("input", (event) => {
+      regionSearch = event.target.value;
+      const query = regionSearch.trim().toLowerCase();
+      let count = 0;
+      elements.sidebar.querySelectorAll("[data-filter-card]").forEach((card, index) => {
+        const region = config.regions[index];
+        const hidden = Boolean(query && !`${region.name} ${region.map} ${region.mode}`.toLowerCase().includes(query));
+        card.hidden = hidden;
+        if (!hidden) count += 1;
+      });
+      elements.sidebar.querySelector("[data-filter-empty]").hidden = count !== 0;
+    });
+  }
+  const wildernessCard = elements.sidebar.querySelector("[data-wilderness-card]");
+  if (wildernessCard) {
+    bindCardSelection(wildernessCard, "[data-wilderness-settings]", () => openWildernessEditor(wildernessCard));
+  }
   elements.sidebar.querySelector("[data-wilderness-settings]")?.addEventListener("click", (event) => {
     event.stopPropagation();
     openWildernessEditor(event.currentTarget);
   });
-  elements.sidebar.querySelectorAll("[data-region-select]").forEach((button) => {
-    button.addEventListener("click", () => selectRegion(Number(button.dataset.regionSelect)));
+  elements.sidebar.querySelectorAll("[data-region-card]").forEach((card) => {
+    bindCardSelection(
+      card,
+      "[data-move], [data-region-settings], [data-region-duplicate], [data-region-delete]",
+      () => selectRegion(Number(card.dataset.regionCard))
+    );
   });
   elements.sidebar.querySelectorAll("[data-move]").forEach((button) => {
     button.addEventListener("click", (event) => {
@@ -838,6 +893,143 @@ function renderRegionSidebar() {
   });
 }
 
+function openModeEditor(index) {
+  selectedModeIndex = index;
+  inspectorTab = "rules";
+  workspaceView = "edit";
+  renderWorkspace();
+  renderModeSidebar();
+  renderModeEditor();
+}
+
+function moveMode(index, direction) {
+  const target = index + direction;
+  if (target < 0 || target >= config.modes.length) return;
+  commit(() => {
+    [config.modes[index], config.modes[target]] = [config.modes[target], config.modes[index]];
+    selectedModeIndex = target;
+  });
+}
+
+async function duplicateMode(index) {
+  const source = config.modes[index];
+  elements.modeDuplicateName.value = `${source.name} Copy`;
+  elements.modeDuplicateId.value = `${source.id}-copy`;
+  elements.modeDuplicateDialog.showModal();
+  await new Promise((resolve) => elements.modeDuplicateDialog.addEventListener("close", resolve, { once: true }));
+  if (elements.modeDuplicateDialog.returnValue !== "confirm") return;
+  const name = elements.modeDuplicateName.value.trim();
+  const id = elements.modeDuplicateId.value.trim();
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id) ||
+    config.modes.some((mode) => mode.id === id) ||
+    config.modes.some((mode) => mode.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+    toast("Mode name and ID must be valid and unique.", "error");
+    return;
+  }
+  commit(() => {
+    config.modes.splice(index + 1, 0, { ...clone(source), id, name });
+    selectedModeIndex = index + 1;
+  });
+}
+
+async function deleteMode(index) {
+  if (config.modes.length <= 1) return;
+  const source = config.modes[index];
+  const used = [config.wilderness, ...config.regions].some((area) => area.mode === source.id);
+  let replacement = config.modes.find((_, candidate) => candidate !== index)?.id;
+  if (used) {
+    elements.modeReplacementMessage.textContent =
+      `${source.name} is in use. Choose the mode that should receive every reference; area overrides will remain unchanged.`;
+    elements.modeReplacementSelect.innerHTML = config.modes
+      .filter((_, candidate) => candidate !== index)
+      .map((mode) => `<option value="${escapeHtml(mode.id)}">${escapeHtml(mode.name)} (${escapeHtml(mode.id)})</option>`)
+      .join("");
+    elements.modeReplacementSelect.value = replacement;
+    elements.modeReplacementDialog.showModal();
+    await new Promise((resolve) => elements.modeReplacementDialog.addEventListener("close", resolve, { once: true }));
+    if (elements.modeReplacementDialog.returnValue !== "confirm") return;
+    replacement = elements.modeReplacementSelect.value;
+  }
+  commit(() => {
+    if (used) {
+      if (config.wilderness.mode === source.id) config.wilderness.mode = replacement;
+      config.regions.forEach((region) => {
+        if (region.mode === source.id) region.mode = replacement;
+      });
+    }
+    config.modes.splice(index, 1);
+    selectedModeIndex = Math.min(index, config.modes.length - 1);
+  });
+}
+
+function renderModeSidebar() {
+  const query = modeSearch.trim().toLowerCase();
+  const mountedFilter = elements.sidebar.querySelector("#modeSearch");
+  const modes = config.modes.map((mode, index) => ({
+    mode,
+    index,
+    hidden: Boolean(query && !`${mode.name} ${mode.id}`.toLowerCase().includes(query))
+  }));
+  const markup = `
+    <div class="panel-heading"><div><h2>Modes</h2><p>Ordered presets for area actions, combat, color, and messages.</p></div></div>
+    <div class="search-row"><input id="modeSearch" type="search" placeholder="Search modes" value="${escapeHtml(modeSearch)}"></div>
+    <div class="list-stack">
+      ${modes.map(({ mode, index, hidden }) => `
+        <article class="sidebar-card ${index === selectedModeIndex ? "selected" : ""}" data-mode-filter-card data-mode-card="${index}" tabindex="0" aria-label="Select ${escapeHtml(mode.name)}" ${index === selectedModeIndex ? 'aria-current="true"' : ""} ${hidden ? "hidden" : ""}>
+          ${sidebarCardHeader(mode.name, modeBadge(mode.id))}
+          <footer class="sidebar-card-footer">
+            <div class="order-controls">
+              <button type="button" class="sidebar-card-icon order-button" data-mode-move="-1" data-index="${index}" title="Move earlier" aria-label="Move ${escapeHtml(mode.name)} earlier" ${index === 0 ? "disabled" : ""}>${heroIcon("arrow-up")}</button>
+              <button type="button" class="sidebar-card-icon order-button" data-mode-move="1" data-index="${index}" title="Move later" aria-label="Move ${escapeHtml(mode.name)} later" ${index === config.modes.length - 1 ? "disabled" : ""}>${heroIcon("arrow-down")}</button>
+            </div>
+            <div class="sidebar-card-actions">
+              <button type="button" class="sidebar-card-icon" data-mode-duplicate="${index}" title="Duplicate mode" aria-label="Duplicate ${escapeHtml(mode.name)}">
+                ${heroIcon("square-2-stack")}
+              </button>
+              <button type="button" class="sidebar-card-icon danger" data-mode-delete="${index}" title="Delete mode" aria-label="Delete ${escapeHtml(mode.name)}" ${config.modes.length === 1 ? "disabled" : ""}>
+                ${heroIcon("trash")}
+              </button>
+            </div>
+          </footer>
+        </article>`).join("")}
+      <div class="empty-state" data-mode-filter-empty ${modes.some(({ hidden }) => !hidden) ? "hidden" : ""}><div><strong>No matching modes</strong><span>Clear the search to show every mode.</span></div></div>
+    </div>`;
+  if (mountedFilter) {
+    const template = document.createElement("template");
+    template.innerHTML = markup;
+    elements.sidebar.querySelector(".list-stack")?.replaceWith(template.content.querySelector(".list-stack"));
+  } else {
+    elements.sidebar.innerHTML = markup;
+    elements.sidebar.querySelector("#modeSearch")?.addEventListener("input", (event) => {
+      modeSearch = event.target.value;
+      const filter = modeSearch.trim().toLowerCase();
+      let count = 0;
+      elements.sidebar.querySelectorAll("[data-mode-filter-card]").forEach((card, index) => {
+        const mode = config.modes[index];
+        card.hidden = Boolean(filter && !`${mode.name} ${mode.id}`.toLowerCase().includes(filter));
+        if (!card.hidden) count += 1;
+      });
+      elements.sidebar.querySelector("[data-mode-filter-empty]").hidden = count !== 0;
+    });
+  }
+  elements.sidebar.querySelectorAll("[data-mode-card]").forEach((card) => {
+    bindCardSelection(
+      card,
+      "[data-mode-move], [data-mode-duplicate], [data-mode-delete]",
+      () => openModeEditor(Number(card.dataset.modeCard))
+    );
+  });
+  elements.sidebar.querySelectorAll("[data-mode-move]").forEach((button) => {
+    button.addEventListener("click", () => moveMode(Number(button.dataset.index), Number(button.dataset.modeMove)));
+  });
+  elements.sidebar.querySelectorAll("[data-mode-duplicate]").forEach((button) => {
+    button.addEventListener("click", async () => duplicateMode(Number(button.dataset.modeDuplicate)));
+  });
+  elements.sidebar.querySelectorAll("[data-mode-delete]").forEach((button) => {
+    button.addEventListener("click", async () => deleteMode(Number(button.dataset.modeDelete)));
+  });
+}
+
 function renderMessagesSidebar() {
   elements.sidebar.innerHTML = `
     <div class="panel-heading"><div><h2>Global messages</h2><p>Each event and output channel can be enabled and customized independently.</p></div></div>
@@ -846,14 +1038,14 @@ function renderMessagesSidebar() {
     const message = config.messages[event.id];
     const outputCount = enabledMessageOutputCount(message);
     const active = config.messages.enabled && message.enabled && outputCount > 0;
-    return `<button type="button" class="region-card message-nav-item ${selectedMessagesPanelId === event.id ? "selected" : ""} ${active ? "" : "disabled"}" data-message-event-id="${escapeHtml(event.id)}">
-          <div class="region-card-top"><span class="region-card-title">${escapeHtml(event.label)}</span><span class="badge ${active ? "pve" : ""}">${active ? "On" : "Off"}</span></div>
-          <div class="region-meta"><span>${outputCount} output${outputCount === 1 ? "" : "s"}</span><span>${message.cooldownSeconds}s cooldown</span></div>
+    return `<button type="button" class="sidebar-card message-nav-item ${selectedMessagesPanelId === event.id ? "selected" : ""} ${active ? "" : "disabled"}" data-message-event-id="${escapeHtml(event.id)}">
+          ${sidebarCardHeader(event.label, `<span class="badge ${active ? "pve" : ""}">${active ? "On" : "Off"}</span>`)}
+          ${sidebarCardDetail(`${outputCount} output${outputCount === 1 ? "" : "s"}`, `${message.cooldownSeconds}s cooldown`)}
         </button>`;
   }).join("")}
-      <button type="button" class="region-card message-nav-item ${selectedMessagesPanelId === LOCALIZATION_PANEL_ID ? "selected" : ""}" data-message-localization>
-        <div class="region-card-top"><span class="region-card-title">Localization</span></div>
-        <div class="region-meta"><span>Action names</span><span>Mode names</span></div>
+      <button type="button" class="sidebar-card message-nav-item ${selectedMessagesPanelId === LOCALIZATION_PANEL_ID ? "selected" : ""}" data-message-localization>
+        ${sidebarCardHeader("Localization")}
+        ${sidebarCardDetail("Action names")}
       </button>
     </div>
     <p class="help">A region uses these global defaults unless it overrides an event.</p>`;
@@ -879,9 +1071,9 @@ function renderSettingsSidebar() {
   elements.sidebar.innerHTML = `
     <div class="panel-heading"><div><h2>Runtime settings</h2><p>Safe defaults are supplied; most servers only need regions and modes.</p></div></div>
     <div class="list-stack">
-      <div class="region-card"><div class="region-card-top"><span class="region-card-title">Hot reload</span><span class="badge ${config.settings.hotReload ? "pve" : ""}">${config.settings.hotReload ? "On" : "Off"}</span></div><div class="region-meta"><span>Every ${config.settings.hotReloadSeconds}s</span></div></div>
-      <div class="region-card"><div class="region-card-top"><span class="region-card-title">Regional combat authority</span><span class="badge ${config.regionalCombat.enabled ? "pve" : ""}">${config.regionalCombat.enabled ? "On" : "Off"}</span></div><div class="region-meta"><span>${config.regionalCombat.enabled ? "PalLaw manages regional final damage and regional PvP" : "All combat remains vanilla"}</span></div></div>
-      <div class="region-card"><div class="region-card-top"><span class="region-card-title">World actions</span><span class="badge ${config.settings.worldRules ? "pve" : ""}">${config.settings.worldRules ? "On" : "Off"}</span></div><div class="region-meta"><span>${config.settings.adminBypass ? "Admins bypass restrictions" : "Admins follow restrictions"}</span></div></div>
+      <div class="sidebar-card">${sidebarCardHeader("Hot reload", `<span class="badge ${config.settings.hotReload ? "pve" : ""}">${config.settings.hotReload ? "On" : "Off"}</span>`)}${sidebarCardDetail(`Every ${config.settings.hotReloadSeconds}s`)}</div>
+      <div class="sidebar-card">${sidebarCardHeader("Regional combat authority", `<span class="badge ${config.regionalCombat.enabled ? "pve" : ""}">${config.regionalCombat.enabled ? "On" : "Off"}</span>`)}${sidebarCardDetail(config.regionalCombat.enabled ? "PalLaw manages regional final damage and regional PvP" : "All combat remains vanilla")}</div>
+      <div class="sidebar-card">${sidebarCardHeader("World actions", `<span class="badge ${config.settings.worldRules ? "pve" : ""}">${config.settings.worldRules ? "On" : "Off"}</span>`)}${sidebarCardDetail(config.settings.adminBypass ? "Admins bypass restrictions" : "Admins follow restrictions")}</div>
     </div>`;
 }
 
@@ -895,28 +1087,34 @@ function renderJsonSidebar() {
 
 function renderSidebar() {
   if (activeSection === "regions") renderRegionSidebar();
+  else if (activeSection === "modes") renderModeSidebar();
   else if (activeSection === "messages") renderMessagesSidebar();
   else if (activeSection === "settings") renderSettingsSidebar();
   else renderJsonSidebar();
 }
 
 function modeSelector(area, scope) {
-  return `<div class="mode-grid">${MODES.map((mode) => `
-    <div class="mode-option" style="--mode-color:${escapeHtml(mode.color)}">
-      <input id="${scope}-mode-${mode.id}" name="${scope}-mode" type="radio" value="${mode.id}" ${area.mode === mode.id ? "checked" : ""}>
-      <label for="${scope}-mode-${mode.id}"><strong>${escapeHtml(mode.label)}</strong><span>${escapeHtml(mode.description)}</span></label>
-    </div>`).join("")}</div>`;
+  const selected = modeDefinition(area.mode, config);
+  return `<div class="field area-mode-field"><span>Mode</span>
+    <details class="mode-select" data-area-mode="${escapeHtml(scope)}">
+      <summary>${modeBadge(selected.id)}<span class="mode-select-name">${escapeHtml(selected.name)}</span></summary>
+      <div class="mode-select-options" role="listbox" aria-label="Mode">
+        ${config.modes.map((mode) => `<button type="button" role="option" aria-selected="${area.mode === mode.id}" data-mode-option="${escapeHtml(mode.id)}">
+          ${modeBadge(mode.id)}<span>${escapeHtml(mode.name)}</span>
+        </button>`).join("")}
+      </div>
+    </details>
+    <small>Options follow Modes display order. Changing mode preserves explicit overrides.</small>
+  </div>`;
 }
 
 function bindModeSelector(container, areaGetter) {
-  container.querySelectorAll('input[type="radio"][name$="-mode"]').forEach((input) => {
-    input.addEventListener("change", () => commit(() => {
-      const area = areaGetter();
-      const oldDefault = modeDefinition(area.mode).color;
-      const shouldUpdateColor = Object.hasOwn(area, "color") && area.color.toLowerCase() === oldDefault.toLowerCase();
-      area.mode = input.value;
-      if (shouldUpdateColor) area.color = modeDefinition(area.mode).color;
-    }));
+  container.querySelectorAll("[data-area-mode]").forEach((picker) => {
+    picker.querySelectorAll("[data-mode-option]").forEach((option) => {
+      option.addEventListener("click", () => commit(() => {
+        areaGetter().mode = option.dataset.modeOption;
+      }));
+    });
   });
 }
 
@@ -935,18 +1133,16 @@ function bindInspectorTabs(container) {
 
 function renderGeneralArea(area, isRegion) {
   const mapOptions = MAPS.map((entry) => `<option value="${entry.id}" ${isRegion && area.map === entry.id ? "selected" : ""}>${escapeHtml(entry.label)}</option>`).join("");
+  const modeMinimumLevel = effectiveMinimumLevel({ mode: area.mode }, config);
   return `
     <div class="form-grid ${isRegion ? "region-general-grid" : ""}">
-      <label class="field full"><span>Name</span><input id="areaName" type="text" maxlength="96" value="${escapeHtml(area.name)}"><small>Names must be unique, ignoring letter case. This value appears in messages.</small></label>
+      <label class="field area-name-field"><span>Name</span><input id="areaName" type="text" maxlength="96" value="${escapeHtml(area.name)}"><small>Names must be unique, ignoring letter case. This value appears in messages.</small></label>
       ${isRegion ? `
-        <div class="field"><span>Enabled</span><div class="toggle-row"><div class="checkbox-copy"><strong>Use this region</strong><span>Disabled regions remain in the file.</span></div><label class="switch"><input id="regionEnabled" type="checkbox" ${area.enabled !== false ? "checked" : ""}><span class="switch-track"></span></label></div></div>
-        <label class="field"><span>Coordinate map</span><select id="regionMap">${mapOptions}</select></label>
-        <label class="field"><span>Display color</span><input id="regionColor" type="color" value="${escapeHtml(area.color)}"></label>
-        <label class="field"><span>Minimum player level</span><input id="minimumLevel" type="number" min="1" max="999" step="1" value="${area.minimumLevel ?? ""}" placeholder="No requirement"><small>Leave blank to allow every level.</small></label>` : ""}
-    </div>
-    <div class="section-card">
-      <div class="section-card-header"><h3>Mode preset</h3><span class="badge ${escapeHtml(area.mode)}">${escapeHtml(modeDefinition(area.mode).label)}</span></div>
-      <div class="section-card-body">${modeSelector(area, isRegion ? "region" : "wilderness")}</div>
+        ${modeSelector(area, "region")}
+        <div class="field region-enabled-field"><span>Enabled</span><div class="toggle-row"><div class="checkbox-copy"><strong>Use this region</strong><span>Disabled regions remain in the file.</span></div><label class="switch"><input id="regionEnabled" type="checkbox" ${area.enabled !== false ? "checked" : ""}><span class="switch-track"></span></label></div></div>
+        <label class="field region-map-field"><span>Coordinate map</span><select id="regionMap">${mapOptions}</select></label>
+        <label class="field region-level-field"><span>Minimum player level</span><input id="minimumLevel" type="number" min="1" max="999" step="1" value="${area.minimumLevel ?? ""}" placeholder="${modeMinimumLevel == null ? "Mode: no requirement" : `Mode: level ${modeMinimumLevel}`}"><small>Leave blank to use the mode setting.</small></label>
+        ` : modeSelector(area, "wilderness")}
     </div>
     ${isRegion ? `
       <div class="section-card"><div class="section-card-header"><h3>Polygon</h3><span class="badge">${area.polygon.length} vertices</span></div><div class="section-card-body">
@@ -968,7 +1164,6 @@ function bindGeneralArea(container, areaGetter, isRegion) {
     areaGetter().map = event.target.value;
     activeMapId = event.target.value;
   }));
-  container.querySelector("#regionColor")?.addEventListener("change", (event) => commit(() => { areaGetter().color = event.target.value; }));
   container.querySelector("#minimumLevel")?.addEventListener("change", (event) => commit(() => {
     const value = event.target.value.trim();
     areaGetter().minimumLevel = value ? Math.max(1, Math.min(999, Math.trunc(Number(value)))) : null;
@@ -988,31 +1183,115 @@ function bindGeneralArea(container, areaGetter, isRegion) {
   container.querySelector("#fitRegionButton")?.addEventListener("click", fitSelected);
 }
 
-function renderActions(area) {
-  const effective = effectiveActions(area);
+function renderActions(subject, isMode = false) {
+  const effective = isMode ? subject.actions : effectiveActions(subject);
   return `
-    <p class="help">Mode presets allow all world actions. Add an override only when this area should explicitly allow or deny an action.</p>
-    <div class="override-grid">${ACTIONS.map((action) => {
-    const raw = Object.hasOwn(area.actions || {}, action.id) ? area.actions[action.id] : null;
-    return `<div class="override-row">
-        <div class="checkbox-copy"><strong>${escapeHtml(action.label)}</strong><span>${escapeHtml(action.description)} Effective: ${effective[action.id] ? "allowed" : "denied"}.</span></div>
-        <select data-action-id="${action.id}" class="${raw === null ? "tri-default" : raw ? "tri-allow" : "tri-deny"}">
-          <option value="default" ${raw === null ? "selected" : ""}>Default</option>
-          <option value="allow" ${raw === true ? "selected" : ""}>Allow</option>
-          <option value="deny" ${raw === false ? "selected" : ""}>Deny</option>
-        </select>
+    <div class="action-matrix-grid">
+      ${ACTIONS.map((action, index) => {
+    const raw = isMode
+      ? subject.actions[action.id]
+      : Object.hasOwn(subject.actions || {}, action.id) ? subject.actions[action.id] : null;
+    const effectiveValue = effective[action.id];
+    const effectiveLabel = action.fastTravelPolicy
+      ? FAST_TRAVEL_POLICIES.find(({ id }) => id === effectiveValue)?.label
+      : effectiveValue ? "Allow" : "Deny";
+    const label = isMode
+      ? effectiveLabel
+      : raw === null
+        ? "Default"
+        : action.fastTravelPolicy
+          ? FAST_TRAVEL_POLICIES.find(({ id }) => id === raw)?.label
+          : raw ? "Allow" : "Deny";
+    const secondary = raw === null ? effectiveLabel : "Override";
+    return `<div class="action-matrix-item">
+        <button type="button"
+          class="matrix-cell ${effectiveValue === false || effectiveValue === "none" ? "denied" : "allowed"} ${isMode || raw === null ? "is-default" : "is-override"}"
+          data-action-id="${action.id}" data-action-index="${index}" data-action-value="${isMode ? String(raw) : raw === null ? "default" : String(raw)}"
+          aria-label="${escapeHtml(`${action.label}: ${label}. Activate to change.`)}">
+          <span class="action-cell-name">${escapeHtml(action.label)}</span>
+          <span class="matrix-cell-primary">${escapeHtml(label)}</span>
+          ${isMode ? "" : `<span class="matrix-cell-secondary">${escapeHtml(secondary)}</span>`}
+        </button>
       </div>`;
-  }).join("")}</div>`;
+  }).join("")}
+    </div>
+    <div id="actionDescription" class="matrix-actor-description"><strong>Player Actions</strong><span>Hover or focus a header or cell to see its meaning.</span></div>`;
 }
 
-function bindActions(container, areaGetter) {
-  container.querySelectorAll("[data-action-id]").forEach((select) => {
-    select.addEventListener("change", () => commit(() => {
-      const area = areaGetter();
-      area.actions ||= {};
-      if (select.value === "default") delete area.actions[select.dataset.actionId];
-      else area.actions[select.dataset.actionId] = select.value === "allow";
+function focusActionNeighbor(cells, current, key) {
+  const direction = {
+    ArrowUp: "up",
+    ArrowDown: "down",
+    ArrowLeft: "left",
+    ArrowRight: "right"
+  }[key];
+  if (!direction) return false;
+  const currentRect = current.getBoundingClientRect();
+  const currentX = currentRect.left + currentRect.width / 2;
+  const currentY = currentRect.top + currentRect.height / 2;
+  const candidates = cells.flatMap((candidate) => {
+    if (candidate === current) return [];
+    const rect = candidate.getBoundingClientRect();
+    const x = rect.left + rect.width / 2;
+    const y = rect.top + rect.height / 2;
+    const primary = direction === "left" ? currentX - x
+      : direction === "right" ? x - currentX
+        : direction === "up" ? currentY - y
+          : y - currentY;
+    if (primary <= 1) return [];
+    const cross = direction === "left" || direction === "right" ? Math.abs(y - currentY) : Math.abs(x - currentX);
+    return [{ candidate, score: primary + cross * 2 }];
+  }).sort((a, b) => a.score - b.score);
+  candidates[0]?.candidate.focus();
+  return true;
+}
+
+function bindActions(container, subjectGetter, isMode = false) {
+  const description = container.querySelector("#actionDescription");
+  const defaultDescription = description?.innerHTML || "";
+  const cells = [...container.querySelectorAll("[data-action-id]")];
+  const bindDescription = (element, action) => {
+    const show = () => {
+      if (description) description.innerHTML = `<strong>${escapeHtml(action.label)}</strong><span>${escapeHtml(action.description)}</span>`;
+    };
+    const restore = () => {
+      if (description) description.innerHTML = defaultDescription;
+    };
+    element.addEventListener("mouseenter", show);
+    element.addEventListener("focus", show);
+    element.addEventListener("mouseleave", () => {
+      if (document.activeElement !== element) restore();
+    });
+    element.addEventListener("blur", restore);
+  };
+  cells.forEach((button) => {
+    const action = ACTIONS.find(({ id }) => id === button.dataset.actionId);
+    if (action) bindDescription(button, action);
+    button.addEventListener("click", () => commit(() => {
+      const subject = subjectGetter();
+      subject.actions ||= {};
+      if (isMode && action.fastTravelPolicy) {
+        const values = FAST_TRAVEL_POLICIES.map(({ id }) => id);
+        subject.actions[action.id] = values[(values.indexOf(subject.actions[action.id]) + 1) % values.length];
+      } else if (isMode) {
+        subject.actions[action.id] = !subject.actions[action.id];
+      } else if (action.fastTravelPolicy) {
+        const current = button.dataset.actionValue;
+        const cycle = ["default", ...FAST_TRAVEL_POLICIES.map(({ id }) => id)];
+        const next = cycle[(cycle.indexOf(current) + 1) % cycle.length];
+        if (next === "default") delete subject.actions[action.id];
+        else subject.actions[action.id] = next;
+      } else {
+        const current = button.dataset.actionValue;
+        const next = current === "default" ? true : current === "true" ? false : null;
+        if (next === null) delete subject.actions[action.id];
+        else subject.actions[action.id] = next;
+      }
     }));
+    button.addEventListener("keydown", (event) => {
+      if (!focusActionNeighbor(cells, button, event.key)) return;
+      event.preventDefault();
+    });
   });
 }
 
@@ -1032,7 +1311,8 @@ function nextCombatOverride(value) {
 
 function renderMatrixActorHeader(actor) {
   const description = actor.description || actor.label;
-  return `<span class="matrix-actor-label" tabindex="0" data-matrix-actor="${actor.id}" aria-label="${escapeHtml(`${actor.label}. ${description}`)}" title="${escapeHtml(`${actor.label}: ${description}`)}">${escapeHtml(matrixActorLabel(actor))}</span>`;
+  const label = escapeHtml(matrixActorLabel(actor));
+  return `<span class="matrix-actor-label" tabindex="0" data-matrix-actor="${actor.id}" aria-label="${escapeHtml(`${actor.label}. ${description}`)}" title="${escapeHtml(`${actor.label}: ${description}`)}">${label}</span>`;
 }
 
 function combatOverrideCount(area) {
@@ -1041,27 +1321,34 @@ function combatOverrideCount(area) {
     count + ACTORS.filter((target) => quickCombatOverride(area, source.id, target.id) !== "default").length, 0);
 }
 
-function renderCombatMatrix(area) {
-  const matrix = effectiveCombat(area);
+function renderCombatMatrix(subject, isMode = false) {
+  const matrix = isMode ? subject.combat : effectiveCombat(subject);
   const targets = ACTORS;
   const sources = ACTORS.filter((actor) => !actor.targetOnly);
-  const presetLabel = modeDefinition(area.mode).label;
+  const presetLabel = isMode ? "" : modeDefinition(subject.mode, config).name;
   return `
     <div class="matrix-toolbar">
-      <p>Rows deal damage. Columns receive it. Default follows the ${escapeHtml(presetLabel)} preset.</p>
+      <p>Rows deal damage. Columns receive it.${isMode ? "" : ` Default follows the ${escapeHtml(presetLabel)} preset.`}</p>
     </div>
     <div class="matrix-wrap"><table class="combat-matrix">
-      <thead><tr><th class="matrix-corner" scope="col">Source / Target</th>${targets.map((target) => `<th scope="col">${renderMatrixActorHeader(target)}</th>`).join("")}</tr></thead>
+      <thead><tr><th class="matrix-corner" scope="col">
+        <span class="matrix-corner-label" tabindex="0" data-matrix-axes aria-label="Targets run across columns. Sources run down rows." title="Targets across columns; sources down rows">
+          <span><strong>Target</strong>${heroIcon("arrow-right", "matrix-axis-icon")}</span>
+          <span><strong>Source</strong>${heroIcon("arrow-down", "matrix-axis-icon")}</span>
+        </span>
+      </th>${targets.map((target) => `<th scope="col">${renderMatrixActorHeader(target)}</th>`).join("")}</tr></thead>
       <tbody>${sources.map((source, rowIndex) => `<tr><th scope="row">${renderMatrixActorHeader(source)}</th>${targets.map((target, columnIndex) => {
-    const raw = quickCombatOverride(area, source.id, target.id);
+    const raw = isMode
+      ? matrix[source.id]?.[target.id] === true ? "allow" : "deny"
+      : quickCombatOverride(subject, source.id, target.id);
     const effective = matrix[source.id]?.[target.id] === true;
-    const next = nextCombatOverride(raw);
+    const next = isMode ? effective ? "deny" : "allow" : nextCombatOverride(raw);
     const effectiveLabel = combatPolicyLabel(effective);
-    const primaryLabel = raw === "default" ? "Default" : effectiveLabel;
-    const secondaryLabel = raw === "default" ? effectiveLabel : "Override";
-    const accessibleState = raw === "default" ? `Default, effective ${effectiveLabel}` : `${effectiveLabel} override`;
+    const primaryLabel = !isMode && raw === "default" ? "Default" : effectiveLabel;
+    const secondaryLabel = isMode ? "" : `<span class="matrix-cell-secondary">${raw === "default" ? effectiveLabel : "Override"}</span>`;
+    const accessibleState = isMode ? effectiveLabel : raw === "default" ? `Default, effective ${effectiveLabel}` : `${effectiveLabel} override`;
     return `<td><button type="button"
-      class="matrix-cell ${effective ? "allowed" : "denied"} ${raw === "default" ? "is-default" : "is-override"}"
+      class="matrix-cell ${effective ? "allowed" : "denied"} ${isMode || raw === "default" ? "is-default" : "is-override"}"
       data-combat-source="${source.id}"
       data-combat-target="${target.id}"
       data-combat-value="${raw}"
@@ -1070,7 +1357,7 @@ function renderCombatMatrix(area) {
       aria-label="${escapeHtml(`${source.label} to ${target.label}: ${accessibleState}. Activate to set ${next}.`)}"
       title="${escapeHtml(`${source.label} to ${target.label}: ${accessibleState}`)}">
         <span class="matrix-cell-primary">${primaryLabel}</span>
-        <span class="matrix-cell-secondary">${secondaryLabel}</span>
+        ${secondaryLabel}
       </button></td>`;
   }).join("")}</tr>`).join("")}</tbody>
     </table></div>
@@ -1080,9 +1367,22 @@ function renderCombatMatrix(area) {
     </div>`;
 }
 
-function bindCombatMatrix(container, areaGetter) {
+function bindCombatMatrix(container, subjectGetter, isMode = false) {
   const description = container.querySelector("#matrixActorDescription");
   const defaultDescription = description?.innerHTML || "";
+  const axes = container.querySelector("[data-matrix-axes]");
+  const showAxesDescription = () => {
+    if (description) description.innerHTML = "<strong>Matrix directions</strong><span>Rows are damage sources. Columns are damage targets.</span>";
+  };
+  const restoreAxesDescription = () => {
+    if (description) description.innerHTML = defaultDescription;
+  };
+  axes?.addEventListener("mouseenter", showAxesDescription);
+  axes?.addEventListener("focus", showAxesDescription);
+  axes?.addEventListener("mouseleave", () => {
+    if (document.activeElement !== axes) restoreAxesDescription();
+  });
+  axes?.addEventListener("blur", restoreAxesDescription);
   container.querySelectorAll("[data-matrix-actor]").forEach((header) => {
     const actor = ACTORS.find((entry) => entry.id === header.dataset.matrixActor);
     const showDescription = () => {
@@ -1121,12 +1421,19 @@ function bindCombatMatrix(container, areaGetter) {
     });
     button.addEventListener("blur", restoreRelationshipDescription);
     button.addEventListener("click", () => commit(() => {
-      setQuickCombatOverride(
-        areaGetter(),
-        button.dataset.combatSource,
-        button.dataset.combatTarget,
-        nextCombatOverride(button.dataset.combatValue)
-      );
+      const subject = subjectGetter();
+      if (isMode) {
+        const source = button.dataset.combatSource;
+        const target = button.dataset.combatTarget;
+        subject.combat[source][target] = !subject.combat[source][target];
+      } else {
+        setQuickCombatOverride(
+          subject,
+          button.dataset.combatSource,
+          button.dataset.combatTarget,
+          nextCombatOverride(button.dataset.combatValue)
+        );
+      }
     }));
     button.addEventListener("keydown", (event) => {
       const movement = {
@@ -1142,9 +1449,11 @@ function bindCombatMatrix(container, areaGetter) {
       container.querySelector(`[data-combat-row="${row}"][data-combat-column="${column}"]`)?.focus();
     });
   });
-  container.querySelector("#resetCombatMatrixButton")?.addEventListener("click", () => commit(() => {
-    areaGetter().combat = [];
-  }));
+  if (!isMode) {
+    container.querySelector("#resetCombatMatrixButton")?.addEventListener("click", () => commit(() => {
+      subjectGetter().combat = [];
+    }));
+  }
 }
 
 function renderRules(area) {
@@ -1172,6 +1481,69 @@ function renderRules(area) {
 function bindRules(container, areaGetter) {
   bindActions(container, areaGetter);
   bindCombatMatrix(container, areaGetter);
+}
+
+function renderModeRules(mode) {
+  return `<div class="rules-stack">
+    <div class="mode-rule-fields">
+      <label class="field mode-id-field"><span>ID</span><input id="modeId" readonly value="${escapeHtml(mode.id)}"></label>
+      <label class="field mode-color-field"><span>Color</span><input id="modeColorPicker" type="color" value="${escapeHtml(mode.color)}"></label>
+      <label class="field mode-level-field"><span>Minimum level</span><input id="modeMinimumLevel" type="number" min="1" max="999" step="1" value="${mode.minimumLevel ?? ""}" placeholder="No requirement"></label>
+      <label class="field mode-name-field"><span>Name</span><input id="modeName" maxlength="96" value="${escapeHtml(mode.name)}"></label>
+    </div>
+    <div class="section-card rules-actions">
+      <div class="section-card-header"><div><h3>Player actions</h3><p>Every action is explicit for this mode.</p></div></div>
+      <div class="section-card-body">${renderActions(mode, true)}</div>
+    </div>
+    <div class="section-card combat-matrix-card">
+      <div class="section-card-header"><div><h3>Combat matrix</h3><p>Every source and target relationship is explicit Allow or Deny.</p></div></div>
+      <div class="section-card-body">${renderCombatMatrix(mode, true)}</div>
+    </div>
+  </div>`;
+}
+
+function bindModeRules(container, modeGetter) {
+  bindActions(container, modeGetter, true);
+  bindCombatMatrix(container, modeGetter, true);
+}
+
+function renderModeEditor() {
+  const mode = config.modes[selectedModeIndex];
+  if (!mode) {
+    elements.inspector.innerHTML = '<div class="empty-state"><div><strong>No mode selected</strong><span>Select a mode from the list.</span></div></div>';
+    return;
+  }
+  if (!["rules", "messages"].includes(inspectorTab)) inspectorTab = "rules";
+  const tabs = [
+    { id: "rules", label: "Rules" },
+    { id: "messages", label: "Messages" }
+  ];
+  const body = inspectorTab === "rules"
+    ? renderModeRules(mode)
+    : messageEditor.render(config.messages, { mode: mode.id, name: mode.name, messages: mode.messages });
+  elements.inspector.innerHTML = `
+    <div class="inspector-header"><h2>${escapeHtml(mode.name)}</h2></div>
+    ${tabStrip(tabs)}
+    <div class="dialog-tab-content">${body}</div>`;
+  bindInspectorTabs(elements.inspector);
+  elements.inspector.querySelector("#modeName")?.addEventListener("change", (event) => commit(() => {
+    config.modes[selectedModeIndex].name = event.target.value.trim();
+  }));
+  const bindColor = (selector) => elements.inspector.querySelector(selector)?.addEventListener("change", (event) => commit(() => {
+    config.modes[selectedModeIndex].color = event.target.value.toUpperCase();
+  }));
+  bindColor("#modeColorPicker");
+  elements.inspector.querySelector("#modeMinimumLevel")?.addEventListener("change", (event) => commit(() => {
+    const value = event.target.value.trim();
+    config.modes[selectedModeIndex].minimumLevel = value
+      ? Math.max(1, Math.min(999, Math.trunc(Number(value))))
+      : null;
+  }));
+  if (inspectorTab === "rules") bindModeRules(elements.inspector, () => config.modes[selectedModeIndex]);
+  if (inspectorTab === "messages") {
+    const proxy = { mode: mode.id, name: mode.name, messages: mode.messages };
+    messageEditor.bind(elements.inspector, config.messages, proxy);
+  }
 }
 
 function renderAreaEditor() {
@@ -1213,12 +1585,7 @@ function renderAreaEditor() {
 function renderMessagesInspector() {
   if (selectedMessagesPanelId === LOCALIZATION_PANEL_ID) {
     elements.inspector.innerHTML = `
-      <div class="inspector-header"><h2>Localization</h2><p>Customize the global player-facing names inserted by the {action} and {mode} placeholders.</p></div>
-      <div class="section-card localization-card">
-        <div class="section-card-header"><div><h3>Area Mode Display Names</h3><p>Used by {mode} in any global or area message.</p></div></div>
-        <div class="section-card-body"><div class="form-grid one localization-grid">${MODES.map((mode) => `
-          <label class="field"><span>${escapeHtml(mode.label)}</span><input data-mode-name="${escapeHtml(mode.id)}" type="text" required value="${escapeHtml(config.messages.modeNames[mode.id])}"><small>Player-facing name for the ${escapeHtml(mode.id)} mode, up to 96 Unicode characters.</small></label>`).join("")}</div></div>
-      </div>
+      <div class="inspector-header"><h2>Localization</h2><p>Customize player-facing action names. Mode display names are edited in the Modes tab.</p></div>
       <div class="section-card localization-card">
         <div class="section-card-header"><div><h3>Player Action Display Names</h3><p>Used by {action} in Action denied messages.</p></div></div>
         <div class="section-card-body"><div class="form-grid one localization-grid">${ACTIONS.map((action) => `
@@ -1227,11 +1594,6 @@ function renderMessagesInspector() {
     elements.inspector.querySelectorAll("[data-action-name]").forEach((input) => {
       input.addEventListener("change", () => commit(() => {
         config.messages.actionNames[input.dataset.actionName] = input.value;
-      }));
-    });
-    elements.inspector.querySelectorAll("[data-mode-name]").forEach((input) => {
-      input.addEventListener("change", () => commit(() => {
-        config.messages.modeNames[input.dataset.modeName] = input.value;
       }));
     });
     return;
@@ -1245,9 +1607,9 @@ function renderMessagesInspector() {
 const SETTING_DEFINITIONS = [
   { group: "Configuration", id: "hotReload", label: "Hot reload", description: "Watch PalLaw.json and automatically apply valid changes.", type: "boolean" },
   { group: "Configuration", id: "hotReloadSeconds", label: "Reload interval", description: "Seconds between file timestamp checks.", type: "number", min: 0.1, max: 60, step: 0.1 },
-  { group: "Enforcement", scope: "regionalCombat", id: "enabled", label: "Regional combat authority", description: "When enabled, PalLaw manages regional final damage and the Palworld player-damage setting so PvP regions work on a PvP-disabled world. Targeting and attack progression remain vanilla in PalLaw 0.2.0.", type: "boolean" },
+  { group: "Enforcement", scope: "regionalCombat", id: "enabled", label: "Regional combat authority", description: "When enabled, PalLaw manages regional final damage and the Palworld player-damage setting so PvP regions work on a PvP-disabled world.", type: "boolean" },
   { group: "Enforcement", id: "worldRules", label: "World action rules", description: "Enforce build, dismantle, riding, flying, editing, decay, and level restrictions.", type: "boolean" },
-  { group: "Enforcement", id: "adminBypass", label: "Administrator bypass", description: "Allow administrators to bypass action and level restrictions. Currently not working on 0.2.x", type: "boolean" },
+  { group: "Enforcement", id: "adminBypass", label: "Administrator bypass", description: "Allow administrators to bypass action and level restrictions.", type: "boolean" },
   { group: "Player tracking", id: "playerSweepSeconds", label: "Player sweep interval", description: "Seconds between location, region, mount, and level checks.", type: "number", min: 0.05, max: 10, step: 0.05 },
   { group: "Player tracking", id: "mountGraceSeconds", label: "Mount denial grace period", description: "Safe-dismount seconds for a player who is already mounted when riding becomes denied; new mount attempts are denied immediately.", type: "number", min: 0, max: 120, step: 0.5 },
   { group: "Diagnostics", id: "debugLogging", label: "Debug logging", description: "Write verbose rule decisions and missing reflected symbols to the UE4SS log.", type: "boolean" }
@@ -1258,11 +1620,21 @@ function renderSettingsInspector() {
   const settingValue = (setting) => setting.scope === "regionalCombat"
     ? config.regionalCombat[setting.id]
     : config.settings[setting.id];
+  const renderSettingRow = (setting) => renderControlRow({
+    label: setting.label,
+    description: setting.description,
+    labelControl: setting.type === "number",
+    className: setting.type === "number" ? "control-row-number" : "",
+    control: setting.type === "boolean"
+      ? `<label class="switch"><input data-setting-id="${escapeHtml(setting.id)}" type="checkbox" ${settingValue(setting) ? "checked" : ""}><span class="switch-track"></span></label>`
+      : `<input data-setting-id="${escapeHtml(setting.id)}" type="number" min="${setting.min}" max="${setting.max}" step="${setting.step}" value="${settingValue(setting)}">`
+  }, escapeHtml);
   elements.inspector.innerHTML = `
     <div class="inspector-header"><h2>Server behavior</h2><p>The defaults balance responsive enforcement with dedicated-server cost.</p></div>
-    <div class="settings-groups">${groups.map((group) => `<section class="settings-group"><h3>${escapeHtml(group)}</h3><div>${SETTING_DEFINITIONS.filter((setting) => setting.group === group).map((setting) => setting.type === "boolean" ? `
-      <div class="setting-row"><div class="checkbox-copy"><strong>${escapeHtml(setting.label)}</strong><span>${escapeHtml(setting.description)}</span></div><label class="switch"><input data-setting-id="${setting.id}" type="checkbox" ${settingValue(setting) ? "checked" : ""}><span class="switch-track"></span></label></div>` : `
-      <label class="setting-row setting-number"><div class="checkbox-copy"><strong>${escapeHtml(setting.label)}</strong><span>${escapeHtml(setting.description)}</span></div><input data-setting-id="${setting.id}" type="number" min="${setting.min}" max="${setting.max}" step="${setting.step}" value="${settingValue(setting)}"></label>`).join("")}</div></section>`).join("")}</div>`;
+    <div class="settings-groups">${groups.map((group) => `<section class="settings-group">
+      <h3>${escapeHtml(group)}</h3>
+      ${renderControlRowGroup(SETTING_DEFINITIONS.filter((setting) => setting.group === group).map(renderSettingRow), "settings-row-group")}
+    </section>`).join("")}</div>`;
   elements.inspector.querySelectorAll("[data-setting-id]").forEach((control) => {
     control.addEventListener("change", () => commit(() => {
       const definition = SETTING_DEFINITIONS.find((entry) => entry.id === control.dataset.settingId);
@@ -1330,6 +1702,7 @@ function renderInspector() {
     elements.inspector.innerHTML = "";
     if (elements.regionEditorDialog.open) renderAreaEditor();
   }
+  else if (activeSection === "modes") renderModeEditor();
   else if (activeSection === "messages") renderMessagesInspector();
   else if (activeSection === "settings") renderSettingsInspector();
   else renderJsonInspector();
@@ -1385,13 +1758,15 @@ elements.sectionNav.addEventListener("click", (event) => {
   activeSection = button.dataset.section;
   inspectorTab = "general";
   editingRegionShape = false;
-  workspaceView = ["regions", "messages"].includes(activeSection) ? "list" : "edit";
+  workspaceView = ["regions", "modes", "messages"].includes(activeSection) ? "list" : "edit";
   if (activeSection === "json") rawEditorValue = stringifyConfig(config);
   renderAll();
 });
 
 elements.undoButton.addEventListener("click", undo);
 elements.redoButton.addEventListener("click", redo);
+elements.topUndoButton.addEventListener("click", undo);
+elements.topRedoButton.addEventListener("click", redo);
 elements.editShapeButton.addEventListener("click", () => {
   if (selectedRegionIndex == null || drawing) return;
   editingRegionShape = !editingRegionShape;

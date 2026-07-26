@@ -1,4 +1,4 @@
-export const CONFIG_VERSION = 2;
+export const CONFIG_VERSION = 3;
 export const CONFIG_FILE_NAME = "PalLaw.json";
 export const SCHEMA_FILE_NAME = "PalLaw.schema.json";
 
@@ -61,9 +61,29 @@ export const ACTIONS = [
   { id: "editSign", label: "Edit signs", description: "Change sign text." },
   { id: "editLock", label: "Edit locks", description: "Change passwords and private chest locks." },
   { id: "decay", label: "Building decay", description: "Apply normal structure deterioration." },
-  { id: "fastTravelDeparture", label: "Fast travel departure", description: "Begin fast travel while standing in this area." },
-  { id: "fastTravelArrival", label: "Fast travel arrival", description: "Arrive at a fast-travel destination inside this area." }
+  {
+    id: "fastTravelDeparture",
+    label: "Fast travel departure",
+    description: "Choose whether trips started inside this area may use every destination, base camps only, or no destination.",
+    fastTravelPolicy: true
+  },
+  {
+    id: "fastTravelArrival",
+    label: "Fast travel arrival",
+    description: "Choose whether arrivals inside this area may use every destination, base camps only, or no destination.",
+    fastTravelPolicy: true
+  }
 ];
+
+export const FAST_TRAVEL_POLICIES = Object.freeze([
+  { id: "all", label: "All" },
+  { id: "baseOnly", label: "Bases only" },
+  { id: "none", label: "Disabled" }
+]);
+
+const FAST_TRAVEL_POLICY_IDS = new Set(
+  FAST_TRAVEL_POLICIES.map(({ id }) => id)
+);
 
 export const DEFAULT_ACTION_NAMES = Object.freeze({
   build: "Building",
@@ -77,44 +97,34 @@ export const DEFAULT_ACTION_NAMES = Object.freeze({
   fastTravelArrival: "Fast Travel Arrival"
 });
 
-export const MODES = [
+export const STARTER_MODES = [
   {
     id: "safe",
-    label: "Safe",
+    name: "Safe",
     color: "#22C55E",
     description: "Players and player-owned Pals are protected in both directions. Map-object damage keeps vanilla behavior unless overridden."
   },
   {
     id: "pve",
-    label: "PvE",
+    name: "PvE",
     color: "#38BDF8",
     description: "Environmental combat remains active, while combat between player groups is denied."
   },
   {
     id: "pvp",
-    label: "PvP",
+    name: "PvP",
     color: "#F43F5E",
     description: "Open player combat. With regional combat authority enabled, PalLaw enables the required player-damage setting and limits combat to the configured areas."
   }
 ];
 
-export const DEFAULT_MODE_NAMES = Object.freeze({
-  safe: "Safe",
-  pve: "PvE",
-  pvp: "PvP"
-});
+export const MODES = STARTER_MODES;
 
 export const MESSAGE_EVENTS = [
   {
     id: "regionChanged",
     label: "Region changed",
     description: "Sent when a player enters a different named region or returns to wilderness.",
-    placeholders: ["{region}", "{previousRegion}", "{mode}"]
-  },
-  {
-    id: "pvpWarning",
-    label: "PvP warning",
-    description: "Sent in addition to the region message whenever the destination mode is PvP.",
     placeholders: ["{region}", "{previousRegion}", "{mode}"]
   },
   {
@@ -177,18 +187,11 @@ function defaultAlerts(text, enabledPresentation, briefTone = "normal") {
 export const DEFAULT_MESSAGES = Object.freeze({
   enabled: true,
   actionNames: { ...DEFAULT_ACTION_NAMES },
-  modeNames: { ...DEFAULT_MODE_NAMES },
   regionChanged: {
     enabled: true,
     cooldownSeconds: 0,
     chat: { enabled: false, text: "Entered {region}." },
     alerts: defaultAlerts("{region}", "activity")
-  },
-  pvpWarning: {
-    enabled: true,
-    cooldownSeconds: 0,
-    chat: { enabled: false, text: "Player combat is enabled in {region}." },
-    alerts: defaultAlerts("PVP ENABLED - {region}", "brief", "negative")
   },
   actionDenied: {
     enabled: true,
@@ -207,7 +210,6 @@ export const DEFAULT_MESSAGES = Object.freeze({
 const ACTOR_IDS = new Set(ACTORS.map((entry) => entry.id));
 const SOURCE_ACTOR_IDS = new Set(ACTORS.filter((entry) => !entry.targetOnly).map((entry) => entry.id));
 const ACTION_IDS = new Set(ACTIONS.map((entry) => entry.id));
-const MODE_IDS = new Set(MODES.map((entry) => entry.id));
 const MESSAGE_IDS = new Set(MESSAGE_EVENTS.map((entry) => entry.id));
 const ALERT_PRESENTATION_IDS = new Set(ALERT_PRESENTATIONS.map((entry) => entry.id));
 const ALERT_TONE_IDS = new Set(ALERT_TONES.map((entry) => entry.id));
@@ -219,8 +221,23 @@ export function clone(value) {
     : JSON.parse(JSON.stringify(value));
 }
 
-export function modeDefinition(mode) {
-  return MODES.find((entry) => entry.id === mode) || MODES[1];
+export function modeDefinition(mode, configOrModes) {
+  const modes = Array.isArray(configOrModes)
+    ? configOrModes
+    : configOrModes?.modes || STARTER_MODES;
+  return modes.find((entry) => entry.id === mode) || modes[0];
+}
+
+function createStarterMode({ id, name, color }) {
+  return {
+    id,
+    name,
+    color,
+    minimumLevel: null,
+    actions: modeActions(id),
+    combat: modeCombat(id),
+    messages: {}
+  };
 }
 
 export function createDefaultConfig() {
@@ -230,6 +247,7 @@ export function createDefaultConfig() {
     regionalCombat: clone(DEFAULT_REGIONAL_COMBAT),
     settings: clone(DEFAULT_SETTINGS),
     messages: clone(DEFAULT_MESSAGES),
+    modes: STARTER_MODES.map(createStarterMode),
     wilderness: {
       name: "Wilderness",
       mode: "pve",
@@ -325,7 +343,6 @@ export function normalizeMessages(value, base = DEFAULT_MESSAGES, includeGlobalC
   if (includeGlobalControls) {
     result.enabled = boolean(value.enabled, result.enabled);
     result.actionNames = normalizeDisplayNames(value.actionNames, DEFAULT_ACTION_NAMES);
-    result.modeNames = normalizeDisplayNames(value.modeNames, DEFAULT_MODE_NAMES);
   }
   for (const event of MESSAGE_EVENTS) {
     if (Object.hasOwn(value, event.id)) {
@@ -348,7 +365,13 @@ function normalizeActions(value) {
   const result = {};
   if (!value || typeof value !== "object" || Array.isArray(value)) return result;
   for (const action of ACTIONS) {
-    if (typeof value[action.id] === "boolean") result[action.id] = value[action.id];
+    if (action.fastTravelPolicy) {
+      if (FAST_TRAVEL_POLICY_IDS.has(value[action.id])) {
+        result[action.id] = value[action.id];
+      }
+    } else if (typeof value[action.id] === "boolean") {
+      result[action.id] = value[action.id];
+    }
   }
   return result;
 }
@@ -373,7 +396,7 @@ function normalizeCombat(value) {
 
 function normalizeArea(value, fallbackName = "Region") {
   const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
-  const mode = MODE_IDS.has(source.mode) ? source.mode : "pve";
+  const mode = text(source.mode, "pve");
   return {
     name: text(source.name, fallbackName),
     mode,
@@ -394,7 +417,6 @@ function normalizePoint(point) {
 function normalizeRegion(value, index) {
   const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
   const area = normalizeArea(source, `Region ${index + 1}`);
-  const mode = modeDefinition(area.mode);
   return {
     ...area,
     enabled: boolean(source.enabled, true),
@@ -402,8 +424,41 @@ function normalizeRegion(value, index) {
       ? Number(source.minimumLevel)
       : null,
     map: text(source.map, "world"),
-    color: text(source.color, mode.color),
     polygon: normalizePolygon(source.polygon)
+  };
+}
+
+function normalizeDenseActions(value) {
+  return Object.fromEntries(ACTIONS.map((action) => [
+    action.id,
+    action.fastTravelPolicy
+      ? (FAST_TRAVEL_POLICY_IDS.has(value?.[action.id]) ? value[action.id] : "all")
+      : boolean(value?.[action.id], true)
+  ]));
+}
+
+function normalizeDenseCombat(value) {
+  return Object.fromEntries(ACTORS.filter((actor) => !actor.targetOnly).map((source) => [
+    source.id,
+    Object.fromEntries(ACTORS.map((target) => [
+      target.id,
+      boolean(value?.[source.id]?.[target.id], false)
+    ]))
+  ]));
+}
+
+function normalizeMode(value, index) {
+  const source = isPlainObject(value) ? value : {};
+  return {
+    id: text(source.id),
+    name: text(source.name, `Mode ${index + 1}`),
+    color: text(source.color),
+    minimumLevel: source.minimumLevel !== null && source.minimumLevel !== undefined && source.minimumLevel !== "" && Number.isInteger(Number(source.minimumLevel))
+      ? Number(source.minimumLevel)
+      : null,
+    actions: normalizeDenseActions(source.actions),
+    combat: normalizeDenseCombat(source.combat),
+    messages: isPlainObject(source.messages) ? clone(source.messages) : {}
   };
 }
 
@@ -437,19 +492,33 @@ export function hydrateConfig(value) {
       : finite(config.settings[key], DEFAULT_SETTINGS[key]);
   }
   config.messages = normalizeMessages(source.messages, DEFAULT_MESSAGES, true);
+  config.modes = Array.isArray(source.modes) ? source.modes.map(normalizeMode) : [];
   config.wilderness = normalizeArea(source.wilderness, "Wilderness");
   config.regions = Array.isArray(source.regions)
     ? source.regions.map(normalizeRegion)
     : [];
+  const attachMode = (area) => Object.defineProperty(area, "_modeDefinition", {
+    value: modeDefinition(area.mode, config),
+    configurable: true,
+    writable: true
+  });
+  attachMode(config.wilderness);
+  config.regions.forEach(attachMode);
   return config;
 }
 
 export function modeActions() {
-  return Object.fromEntries(ACTIONS.map((action) => [action.id, true]));
+  return Object.fromEntries(
+    ACTIONS.map((action) => [action.id, action.fastTravelPolicy ? "all" : true])
+  );
 }
 
 export function effectiveActions(area) {
-  return { ...modeActions(area?.mode), ...(area?.actions || {}) };
+  return { ...(area?._modeDefinition?.actions || modeActions(area?.mode)), ...(area?.actions || {}) };
+}
+
+export function effectiveMinimumLevel(area, config) {
+  return area?.minimumLevel ?? area?._modeDefinition?.minimumLevel ?? modeDefinition(area?.mode, config)?.minimumLevel ?? null;
 }
 
 export function modeCombat(mode) {
@@ -478,7 +547,7 @@ export function modeCombat(mode) {
 }
 
 function resolveCombat(area) {
-  const preset = modeCombat(area?.mode || "pve");
+  const preset = area?._modeDefinition?.combat || modeCombat(area?.mode || "pve");
   const matrix = Object.fromEntries(
     Object.entries(preset).map(([source, targets]) => [source, { ...targets }])
   );
@@ -574,10 +643,12 @@ export function deriveFeatureSummary(input) {
     }
     const actions = effectiveActions(area);
     needsWorldActionAuthorization ||= ["build", "dismantle", "editSign", "editLock"].some((action) => actions[action] === false);
-    needsPlayerActionEnforcement ||= area.minimumLevel != null ||
+    const minimumLevel = effectiveMinimumLevel(area, config);
+    needsPlayerActionEnforcement ||= minimumLevel != null ||
       ["ride", "fly"].some((action) => actions[action] === false);
-    needsFastTravelAuthorization ||= area.minimumLevel != null ||
-      ["fastTravelDeparture", "fastTravelArrival"].some((action) => actions[action] === false);
+    needsFastTravelAuthorization ||= minimumLevel != null ||
+      actions.fastTravelDeparture !== "all" ||
+      actions.fastTravelArrival !== "all";
     needsDecayEnforcement ||= actions.decay === false;
   }
 
@@ -608,7 +679,8 @@ export function deriveFeatureSummary(input) {
 
 export function resolveAreaMessages(config, area) {
   const global = normalizeMessages(config?.messages, DEFAULT_MESSAGES, true);
-  return normalizeMessages(area?.messages, global, false);
+  const withMode = normalizeMessages(modeDefinition(area?.mode, config)?.messages, global, false);
+  return normalizeMessages(area?.messages, withMode, false);
 }
 
 export function samePoint(a, b) {
@@ -683,7 +755,7 @@ export function areaAt(config, point) {
       result = { ...region, isWilderness: false, index };
     }
   });
-  return result;
+  return { ...result, minimumLevel: effectiveMinimumLevel(result, config) };
 }
 
 export function evaluateCombat(config, sourceKind, targetKind, targetPoint) {
@@ -788,14 +860,10 @@ function validateRawMessages(value, context, global, errors) {
   if (global) {
     allowed.add("enabled");
     allowed.add("actionNames");
-    allowed.add("modeNames");
   }
   if (!rejectUnknownKeys(value, allowed, context, errors)) return;
   if (global && Object.hasOwn(value, "actionNames")) {
     validateRawDisplayNames(value.actionNames, DEFAULT_ACTION_NAMES, `${context}.actionNames`, errors);
-  }
-  if (global && Object.hasOwn(value, "modeNames")) {
-    validateRawDisplayNames(value.modeNames, DEFAULT_MODE_NAMES, `${context}.modeNames`, errors);
   }
   for (const event of MESSAGE_EVENTS) {
     if (Object.hasOwn(value, event.id)) validateRawMessage(value[event.id], `${context}.${event.id}`, errors);
@@ -820,7 +888,13 @@ function validateRawActions(value, context, errors) {
   const allowed = new Set(ACTIONS.map((action) => action.id));
   if (!rejectUnknownKeys(value, allowed, context, errors)) return;
   for (const [key, entry] of Object.entries(value)) {
-    if (typeof entry !== "boolean") errors.push(`${context}.${key} must be true or false.`);
+    if (key === "fastTravelDeparture" || key === "fastTravelArrival") {
+      if (!FAST_TRAVEL_POLICY_IDS.has(entry)) {
+        errors.push(`${context}.${key} must be all, baseOnly, or none.`);
+      }
+    } else if (typeof entry !== "boolean") {
+      errors.push(`${context}.${key} must be true or false.`);
+    }
   }
 }
 
@@ -848,15 +922,53 @@ function validateRawCombat(value, context, errors) {
 function validateRawArea(value, context, region, errors) {
   const allowed = new Set(["name", "mode", "actions", "combat", "messages"]);
   if (region) {
-    for (const key of ["enabled", "minimumLevel", "map", "color", "polygon"]) allowed.add(key);
+    for (const key of ["enabled", "minimumLevel", "map", "polygon"]) allowed.add(key);
   }
   if (!rejectUnknownKeys(value, allowed, context, errors)) return;
   if (!Object.hasOwn(value, "name")) errors.push(`${context}.name is required.`);
-  if (Object.hasOwn(value, "mode") && !MODE_IDS.has(value.mode)) errors.push(`${context}.mode must be safe, pve, or pvp.`);
+  if (!Object.hasOwn(value, "mode")) errors.push(`${context}.mode is required.`);
   if (Object.hasOwn(value, "actions")) validateRawActions(value.actions, `${context}.actions`, errors);
   if (Object.hasOwn(value, "combat")) validateRawCombat(value.combat, `${context}.combat`, errors);
   if (Object.hasOwn(value, "messages")) validateRawMessages(value.messages, `${context}.messages`, false, errors);
   if (region && !Object.hasOwn(value, "polygon")) errors.push(`${context}.polygon is required.`);
+}
+
+function validateRawMode(value, index, errors) {
+  const context = `modes[${index}]`;
+  if (!rejectUnknownKeys(value, new Set(["id", "name", "color", "minimumLevel", "actions", "combat", "messages"]), context, errors)) return;
+  for (const key of ["id", "name", "color", "minimumLevel", "actions", "combat"]) {
+    if (!Object.hasOwn(value, key)) errors.push(`${context}.${key} is required.`);
+  }
+  if (Object.hasOwn(value, "minimumLevel") &&
+      value.minimumLevel !== null &&
+      (!Number.isInteger(value.minimumLevel) || value.minimumLevel < 1 || value.minimumLevel > 999)) {
+    errors.push(`${context}.minimumLevel must be null or an integer between 1 and 999.`);
+  }
+  if (Object.hasOwn(value, "actions")) {
+    validateRawActions(value.actions, `${context}.actions`, errors);
+    for (const action of ACTIONS) {
+      if (!Object.hasOwn(value.actions, action.id)) errors.push(`${context}.actions.${action.id} is required.`);
+    }
+  }
+  if (Object.hasOwn(value, "combat")) {
+    if (!isPlainObject(value.combat)) errors.push(`${context}.combat must be an object.`);
+    else {
+      const sourceIds = ACTORS.filter((actor) => !actor.targetOnly).map((actor) => actor.id);
+      rejectUnknownKeys(value.combat, new Set(sourceIds), `${context}.combat`, errors);
+      for (const source of sourceIds) {
+        if (!Object.hasOwn(value.combat, source)) {
+          errors.push(`${context}.combat.${source} is required.`);
+          continue;
+        }
+        if (!rejectUnknownKeys(value.combat[source], ACTOR_IDS, `${context}.combat.${source}`, errors)) continue;
+        for (const target of ACTORS) {
+          if (!Object.hasOwn(value.combat[source], target.id)) errors.push(`${context}.combat.${source}.${target.id} is required.`);
+          else if (typeof value.combat[source][target.id] !== "boolean") errors.push(`${context}.combat.${source}.${target.id} must be true or false.`);
+        }
+      }
+    }
+  }
+  if (Object.hasOwn(value, "messages")) validateRawMessages(value.messages, `${context}.messages`, false, errors);
 }
 
 function validateRawRegionalCombat(value, errors) {
@@ -873,8 +985,9 @@ function validateRawRegionalCombat(value, errors) {
 }
 
 function validateRawConfig(input, errors) {
-  if (!rejectUnknownKeys(input, new Set(["$schema", "version", "regionalCombat", "settings", "messages", "wilderness", "regions"]), "root", errors)) return;
+  if (!rejectUnknownKeys(input, new Set(["$schema", "version", "regionalCombat", "settings", "messages", "modes", "wilderness", "regions"]), "root", errors)) return;
   if (!Object.hasOwn(input, "version")) errors.push("version is required.");
+  if (!Object.hasOwn(input, "modes")) errors.push("modes is required.");
   if (!Object.hasOwn(input, "wilderness")) errors.push("wilderness is required.");
   if (Object.hasOwn(input, "regionalCombat")) {
     validateRawRegionalCombat(input.regionalCombat, errors);
@@ -884,6 +997,10 @@ function validateRawConfig(input, errors) {
     rejectUnknownKeys(input.settings, allowed, "settings", errors);
   }
   if (Object.hasOwn(input, "messages")) validateRawMessages(input.messages, "messages", true, errors);
+  if (Object.hasOwn(input, "modes")) {
+    if (!Array.isArray(input.modes)) errors.push("modes must be an array.");
+    else input.modes.forEach((mode, index) => validateRawMode(mode, index, errors));
+  }
   if (Object.hasOwn(input, "wilderness")) validateRawArea(input.wilderness, "wilderness", false, errors);
   if (Object.hasOwn(input, "regions")) {
     if (!Array.isArray(input.regions)) errors.push("regions must be an array.");
@@ -903,8 +1020,25 @@ export function validateConfig(input) {
   validateRawConfig(input, errors);
   const config = hydrateConfig(input);
   if (Number(config.version) !== CONFIG_VERSION) errors.push(`version must be ${CONFIG_VERSION}.`);
+  if (config.modes.length < 1 || config.modes.length > 128) errors.push("modes must contain between 1 and 128 entries.");
+  const modeIds = new Set();
+  const modeNames = new Set();
+  config.modes.forEach((mode, index) => {
+    const prefix = `modes[${index}]`;
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(mode.id)) errors.push(`${prefix}.id must use lowercase slug syntax.`);
+    if (modeIds.has(mode.id)) errors.push(`${prefix}.id duplicates another mode.`);
+    modeIds.add(mode.id);
+    const normalizedName = mode.name.trim().toLowerCase();
+    if (!normalizedName || [...mode.name].length > 96) errors.push(`${prefix}.name must contain between 1 and 96 characters.`);
+    if (modeNames.has(normalizedName)) errors.push(`${prefix}.name duplicates another mode name ignoring case.`);
+    modeNames.add(normalizedName);
+    if (!/^#[0-9a-f]{6}$/i.test(mode.color)) errors.push(`${prefix}.color must use #RRGGBB.`);
+    if (mode.minimumLevel !== null && (!Number.isInteger(mode.minimumLevel) || mode.minimumLevel < 1 || mode.minimumLevel > 999)) {
+      errors.push(`${prefix}.minimumLevel must be null or an integer between 1 and 999.`);
+    }
+  });
   if (!config.wilderness.name.trim()) errors.push("wilderness.name is required.");
-  if (!MODE_IDS.has(config.wilderness.mode)) errors.push("wilderness.mode must be safe, pve, or pvp.");
+  if (!modeIds.has(config.wilderness.mode)) errors.push("wilderness.mode references an unknown mode.");
   validateCombat(config.wilderness.combat, "wilderness.combat", errors);
 
   const names = new Map([[config.wilderness.name.trim().toLowerCase(), "wilderness"]]);
@@ -915,8 +1049,7 @@ export function validateConfig(input) {
     const normalized = name.toLowerCase();
     if (normalized && names.has(normalized)) errors.push(`${prefix}.name duplicates ${names.get(normalized)}.`);
     else if (normalized) names.set(normalized, prefix);
-    if (!MODE_IDS.has(region.mode)) errors.push(`${prefix}.mode must be safe, pve, or pvp.`);
-    if (!/^#[0-9a-f]{6}$/i.test(region.color)) errors.push(`${prefix}.color must use #RRGGBB.`);
+    if (!modeIds.has(region.mode)) errors.push(`${prefix}.mode references an unknown mode.`);
     if (!Array.isArray(region.polygon) || region.polygon.length < 3) errors.push(`${prefix}.polygon requires at least three points.`);
     else {
       if (polygonArea(region.polygon) <= EPSILON) errors.push(`${prefix}.polygon must enclose a non-zero area.`);
@@ -939,6 +1072,10 @@ export function validateConfig(input) {
   config.regions.forEach((region, index) => {
     const resolved = resolveAreaMessages(config, region);
     for (const event of MESSAGE_EVENTS) validateMessage(resolved[event.id], `regions[${index}].messages.${event.id}`, errors);
+  });
+  config.modes.forEach((mode, index) => {
+    const resolved = resolveAreaMessages(config, { mode: mode.id, messages: {} });
+    for (const event of MESSAGE_EVENTS) validateMessage(resolved[event.id], `modes[${index}].messages.${event.id}`, errors);
   });
 
   const enabled = config.regions
@@ -999,9 +1136,7 @@ function compactMessages(messages, defaults, includeGlobalControls) {
   if (includeGlobalControls) {
     result.enabled = messages.enabled;
     const actionNames = compactDisplayNames(messages.actionNames, DEFAULT_ACTION_NAMES);
-    const modeNames = compactDisplayNames(messages.modeNames, DEFAULT_MODE_NAMES);
     if (Object.keys(actionNames).length) result.actionNames = actionNames;
-    if (Object.keys(modeNames).length) result.modeNames = modeNames;
   }
   for (const event of MESSAGE_EVENTS) {
     const compact = compactMessage(messages[event.id], defaults[event.id]);
@@ -1034,6 +1169,15 @@ export function serializeConfig(input) {
     regionalCombat: clone(config.regionalCombat),
     settings: clone(config.settings),
     messages: compactMessages(config.messages, DEFAULT_MESSAGES, true),
+    modes: config.modes.map((mode) => ({
+      id: mode.id,
+      name: mode.name,
+      color: mode.color,
+      minimumLevel: mode.minimumLevel,
+      actions: clone(mode.actions),
+      combat: clone(mode.combat),
+      ...(Object.keys(mode.messages || {}).length ? { messages: clone(mode.messages) } : {})
+    })),
     wilderness: compactArea(config.wilderness, config.messages),
     regions: config.regions.map((region) => {
       const area = compactArea(region, config.messages);
@@ -1042,7 +1186,6 @@ export function serializeConfig(input) {
         ...(region.enabled === false ? { enabled: false } : {}),
         ...(region.minimumLevel !== null ? { minimumLevel: region.minimumLevel } : {}),
         ...(region.map !== "world" ? { map: region.map } : {}),
-        ...(region.color !== modeDefinition(region.mode).color ? { color: region.color } : {}),
         polygon: region.polygon.map(([x, y]) => [Number(x), Number(y)])
       };
     })
@@ -1098,6 +1241,149 @@ function currentMigrationRegistry() {
       });
     }
   };
+  const migrateV2ToV3 = (document, report = []) => {
+    const oldRegionChanged = {
+      enabled: true,
+      cooldownSeconds: 0,
+      chat: { enabled: false, text: "Entered {region}." },
+      alerts: defaultAlerts("{region}", "activity")
+    };
+    const oldPvpWarning = {
+      enabled: true,
+      cooldownSeconds: 0,
+      chat: { enabled: false, text: "Player combat is enabled in {region}." },
+      alerts: defaultAlerts("PVP ENABLED - {region}", "brief", "negative")
+    };
+    const globalMessages = isPlainObject(document.messages) ? document.messages : {};
+    const legacyErrors = [];
+    if (Object.hasOwn(globalMessages, "pvpWarning")) {
+      validateRawMessage(globalMessages.pvpWarning, "messages.pvpWarning", legacyErrors);
+    }
+    const validateLegacyArea = (area, path) => {
+      if (!isPlainObject(area)) return;
+      if (Object.hasOwn(area, "color") && !/^#[0-9a-f]{6}$/i.test(area.color)) {
+        legacyErrors.push(`${path}.color must use #RRGGBB.`);
+      }
+      if (isPlainObject(area.messages) && Object.hasOwn(area.messages, "pvpWarning")) {
+        validateRawMessage(area.messages.pvpWarning, `${path}.messages.pvpWarning`, legacyErrors);
+      }
+    };
+    validateLegacyArea(document.wilderness, "wilderness");
+    if (Array.isArray(document.regions)) {
+      document.regions.forEach((region, index) => validateLegacyArea(region, `regions[${index}]`));
+    }
+    if (legacyErrors.length) throw new Error(legacyErrors.join("\n"));
+    const effectiveGlobalRegion = normalizeMessage(globalMessages.regionChanged, oldRegionChanged);
+    const effectiveGlobalWarning = normalizeMessage(globalMessages.pvpWarning, oldPvpWarning);
+    const mergeWarning = (base, warning, path) => {
+      const result = clone(base);
+      let migrated = false;
+      const replace = (channelPath, current, incoming) => {
+        if (!warning.enabled || !incoming.enabled) return current;
+        if (base.enabled && current.enabled) {
+          addMigrationFallback(report, {
+            fromVersion: 2,
+            toVersion: 3,
+            path: `${path}.${channelPath}`,
+            message: "Enabled PvP warning output replaced the enabled region-change output."
+          });
+        }
+        migrated = true;
+        return clone(incoming);
+      };
+      result.chat = replace("chat", result.chat, warning.chat);
+      for (const { id } of ALERT_PRESENTATIONS) {
+        result.alerts[id] = replace(`alerts.${id}`, result.alerts[id], warning.alerts[id]);
+      }
+      if (migrated) result.cooldownSeconds = warning.cooldownSeconds;
+      return result;
+    };
+    const localizedNames = isPlainObject(globalMessages.modeNames) ? globalMessages.modeNames : {};
+    for (const id of Object.keys(localizedNames)) {
+      if (!STARTER_MODES.some((mode) => mode.id === id)) {
+        throw new Error(`messages.modeNames contains an unknown field: ${id}`);
+      }
+    }
+    document.modes = STARTER_MODES.map((starter) => {
+      const mode = createStarterMode({
+        ...starter,
+        name: typeof localizedNames[starter.id] === "string"
+          ? localizedNames[starter.id]
+          : starter.name
+      });
+      if (starter.id === "pvp") {
+        mode.messages.regionChanged = mergeWarning(
+          effectiveGlobalRegion,
+          effectiveGlobalWarning,
+          "$.modes[pvp].messages.regionChanged"
+        );
+      }
+      return mode;
+    });
+    if (Object.hasOwn(globalMessages, "modeNames")) {
+      delete globalMessages.modeNames;
+      addMigrationFallback(report, {
+        fromVersion: 2,
+        toVersion: 3,
+        path: "$.messages.modeNames",
+        message: "Mode display names moved to the corresponding mode.name fields."
+      });
+    }
+    if (Object.hasOwn(globalMessages, "pvpWarning")) {
+      delete globalMessages.pvpWarning;
+      addMigrationFallback(report, {
+        fromVersion: 2,
+        toVersion: 3,
+        path: "$.messages.pvpWarning",
+        message: "PvP warning outputs moved to pvp.messages.regionChanged."
+      });
+    }
+    const migrateArea = (area, path) => {
+      if (!isPlainObject(area)) return;
+      if (!Object.hasOwn(area, "mode")) area.mode = "pve";
+      const actions = area?.actions;
+      for (const key of ["fastTravelDeparture", "fastTravelArrival"]) {
+        if (!isPlainObject(actions) || !Object.hasOwn(actions, key)) continue;
+        if (typeof actions[key] !== "boolean") {
+          throw new Error(`${path}.actions.${key} must be true or false.`);
+        }
+        actions[key] = actions[key] ? "all" : "none";
+      }
+      if (Object.hasOwn(area, "color")) {
+        delete area.color;
+        addMigrationFallback(report, {
+          fromVersion: 2,
+          toVersion: 3,
+          path: `${path}.color`,
+          message: "Removed the region color; the referenced mode is now the sole color authority."
+        });
+      }
+      const messages = isPlainObject(area.messages) ? area.messages : null;
+      if (messages && area.mode === "pvp" &&
+          (Object.hasOwn(messages, "regionChanged") || Object.hasOwn(messages, "pvpWarning"))) {
+          const areaRegion = normalizeMessage(messages.regionChanged, effectiveGlobalRegion);
+          const areaWarning = normalizeMessage(messages.pvpWarning, effectiveGlobalWarning);
+          messages.regionChanged = mergeWarning(areaRegion, areaWarning, `${path}.messages.regionChanged`);
+      }
+      if (messages && Object.hasOwn(messages, "pvpWarning")) {
+        delete messages.pvpWarning;
+        addMigrationFallback(report, {
+          fromVersion: 2,
+          toVersion: 3,
+          path: `${path}.messages.pvpWarning`,
+          message: area.mode === "pvp"
+            ? "PvP warning outputs merged into this area's messages.regionChanged override."
+            : "Removed an unused PvP warning override from a non-PvP area."
+        });
+      }
+    };
+    migrateArea(document.wilderness, "$.wilderness");
+    if (Array.isArray(document.regions)) {
+      document.regions.forEach((region, index) => {
+        migrateArea(region, `$.regions[${index}]`);
+      });
+    }
+  };
   return [
     {
       version: 1,
@@ -1107,7 +1393,8 @@ function currentMigrationRegistry() {
         }
         const candidate = clone(document);
         migrateV1ToV2(candidate, []);
-        candidate.version = 2;
+        migrateV2ToV3(candidate);
+        candidate.version = 3;
         const validation = validateConfig(candidate);
         if (!validation.valid) throw new Error(validation.errors.join("\n"));
       },
@@ -1115,6 +1402,17 @@ function currentMigrationRegistry() {
     },
     {
       version: 2,
+      validate(document) {
+        const candidate = clone(document);
+        migrateV2ToV3(candidate);
+        candidate.version = 3;
+        const validation = validateConfig(candidate);
+        if (!validation.valid) throw new Error(validation.errors.join("\n"));
+      },
+      migrateToNext: migrateV2ToV3
+    },
+    {
+      version: 3,
       validate(document) {
         const validation = validateConfig(document);
         if (!validation.valid) throw new Error(validation.errors.join("\n"));

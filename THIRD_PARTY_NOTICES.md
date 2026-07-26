@@ -23,6 +23,14 @@ These files are included for geographic editing in an unofficial fan tool. Their
 - Project: Leaflet.Editable
 - License and notices: `site/pallaw/vendor/leaflet-editable/NOTICE`
 
+## Heroicons
+
+- Runtime files: SVG icons under `https://cdn.jsdelivr.net/npm/heroicons@2/`
+- Project: Heroicons 2, following the newest compatible release through jsDelivr's moving major alias
+- Copyright: Tailwind Labs, Inc.
+- License: MIT
+- Source and license: `https://github.com/tailwindlabs/heroicons`
+
 ## Ko-fi support widget
 
 - Script: `https://storage.ko-fi.com/cdn/scripts/overlay-widget.js`

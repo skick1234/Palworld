@@ -10,7 +10,7 @@
   <meta property="og:title" content="PalLaw Rules Studio">
   <meta property="og:description" content="Build and validate regional Palworld server rules in your browser.">
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self' blob: data:; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' blob: data:; font-src https://fonts.gstatic.com; connect-src 'none'; frame-src https://ko-fi.com; object-src 'none'; base-uri 'self'; form-action 'none'">
+    content="default-src 'self' blob: data:; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' blob: data: https://cdn.jsdelivr.net; font-src https://fonts.gstatic.com; connect-src 'none'; frame-src https://ko-fi.com; object-src 'none'; base-uri 'self'; form-action 'none'">
   <title>PalLaw Rules Studio</title>
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
   <link rel="stylesheet" href="../shared/theme.css?v=6">
@@ -30,6 +30,10 @@
         </div>
 
         <div class="top-actions">
+          <div class="history-actions" aria-label="Change history">
+            <button id="topUndoButton" class="icon-button history-button" type="button" aria-label="Undo" title="Undo" disabled><span class="hero-icon hero-icon-arrow-uturn-left" aria-hidden="true"></span></button>
+            <button id="topRedoButton" class="icon-button history-button" type="button" aria-label="Redo" title="Redo" disabled><span class="hero-icon hero-icon-arrow-uturn-right" aria-hidden="true"></span></button>
+          </div>
           <button class="theme-toggle" type="button" data-theme-toggle aria-label="Change color theme">LT</button>
           <a class="discord-link" href="https://discord.gg/zzhK54aaYz" target="_blank" rel="noreferrer">Discord</a>
           <button class="support-trigger" type="button" data-support-trigger>Donate</button>
@@ -44,6 +48,7 @@
           <span>Regions</span>
           <span id="regionCountBadge" class="count-badge">0</span>
         </button>
+        <button type="button" class="section-tab" data-section="modes"><span>Modes</span></button>
         <button type="button" class="section-tab" data-section="messages"><span>Messages</span></button>
         <button type="button" class="section-tab" data-section="settings"><span>Runtime</span></button>
         <button type="button" class="section-tab" data-section="json"><span>Raw JSON</span></button>
@@ -99,17 +104,41 @@
           <p id="areaEditorKind">Region settings</p>
           <h2 id="regionEditorTitle">Region</h2>
         </div>
-        <button id="regionEditorCloseButton" class="region-editor-close" type="button" aria-label="Close region settings">×</button>
+        <button id="regionEditorCloseButton" class="region-editor-close" type="button" aria-label="Close region settings"><span class="hero-icon hero-icon-x-mark" aria-hidden="true"></span></button>
       </header>
       <div id="regionEditorContent" class="region-editor-content"></div>
       <footer class="region-editor-footer">
         <div class="dialog-actions" aria-label="Change history">
-          <button id="undoButton" class="button compact ghost" type="button" disabled>↶ Undo</button>
-          <button id="redoButton" class="button compact ghost" type="button" disabled>↷ Redo</button>
+          <button id="undoButton" class="icon-button history-button" type="button" aria-label="Undo" title="Undo" disabled><span class="hero-icon hero-icon-arrow-uturn-left" aria-hidden="true"></span></button>
+          <button id="redoButton" class="icon-button history-button" type="button" aria-label="Redo" title="Redo" disabled><span class="hero-icon hero-icon-arrow-uturn-right" aria-hidden="true"></span></button>
         </div>
         <button id="regionEditorDoneButton" class="button primary" type="button">Done</button>
       </footer>
     </div>
+  </dialog>
+
+  <dialog id="modeDuplicateDialog" class="dialog" aria-labelledby="modeDuplicateTitle">
+    <form method="dialog">
+      <h2 id="modeDuplicateTitle">Duplicate mode</h2>
+      <label class="field"><span>Unique name</span><input id="modeDuplicateName" maxlength="96" required></label>
+      <label class="field"><span>Immutable ID</span><input id="modeDuplicateId" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" required></label>
+      <div class="dialog-actions">
+        <button type="submit" value="cancel" class="button ghost">Cancel</button>
+        <button type="submit" value="confirm" class="button primary">Duplicate</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="modeReplacementDialog" class="dialog" aria-labelledby="modeReplacementTitle">
+    <form method="dialog">
+      <h2 id="modeReplacementTitle">Replace mode references</h2>
+      <p id="modeReplacementMessage"></p>
+      <label class="field"><span>Replacement mode</span><select id="modeReplacementSelect" required></select></label>
+      <div class="dialog-actions">
+        <button type="submit" value="cancel" class="button ghost">Cancel</button>
+        <button type="submit" value="confirm" class="button danger">Reassign and delete</button>
+      </div>
+    </form>
   </dialog>
 
   <dialog id="confirmDialog" class="dialog">
