@@ -1,0 +1,235 @@
+import { For, Show, createMemo, createSignal } from "solid-js";
+import { render } from "solid-js/web";
+import type { JSX } from "solid-js";
+import type { EditorSection } from "../editor/create-editor-model";
+
+export interface ModeSummary {
+  readonly id: string;
+  readonly name: string;
+  readonly color: string;
+}
+
+export interface AreaSummary {
+  readonly name: string;
+  readonly mode: string;
+}
+
+export interface RegionSummary extends AreaSummary {
+  readonly enabled?: boolean;
+  readonly map?: string;
+}
+
+interface IconProps { readonly name: string; }
+function Icon(props: IconProps) {
+  return <span class={`hero-icon hero-icon-${props.name}`} aria-hidden="true" />;
+}
+
+function ModeBadge(props: { readonly modeId: string; readonly modes: readonly ModeSummary[] }) {
+  const definition = () => props.modes.find((mode) => mode.id === props.modeId) ?? props.modes[0];
+  return (
+    <span class="badge mode-badge" style={{ "--mode-color": definition()?.color ?? "#64748b" }}>
+      {definition()?.name ?? props.modeId}
+    </span>
+  );
+}
+
+function CardHeader(props: { readonly title: string; readonly children?: JSX.Element }) {
+  return <span class="sidebar-card-header"><span class="sidebar-card-title">{props.title}</span>{props.children}</span>;
+}
+
+function CardDetail(props: { readonly parts: readonly string[] }) {
+  return <span class="sidebar-card-detail">{props.parts.join(" · ")}</span>;
+}
+
+function activateOnKeyboard(event: KeyboardEvent, action: () => void): void {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  event.preventDefault();
+  action();
+}
+
+export interface RegionSidebarProps {
+  readonly wilderness: AreaSummary;
+  readonly regions: readonly RegionSummary[];
+  readonly modes: readonly ModeSummary[];
+  readonly selectedIndex: number | null;
+  readonly onSelect: (index: number) => void;
+  readonly onOpenWilderness: (trigger: HTMLElement) => void;
+  readonly onOpenRegion: (index: number, trigger: HTMLElement) => void;
+  readonly onMove: (index: number, direction: number) => void;
+  readonly onDuplicate: (index: number) => void;
+  readonly onDelete: (index: number) => void;
+}
+
+export function RegionSidebar(props: RegionSidebarProps) {
+  const [query, setQuery] = createSignal("");
+  const visible = createMemo(() => {
+    const needle = query().trim().toLocaleLowerCase();
+    return props.regions
+      .map((region, index) => ({ region, index }))
+      .filter(({ region }) => !needle || `${region.name} ${region.map ?? ""} ${region.mode}`.toLocaleLowerCase().includes(needle));
+  });
+
+  return <>
+    <div class="panel-heading"><div><h2>Regions</h2><p>Later polygon entries win overlaps. The Wilderness applies only when none match.</p></div></div>
+    <div class="search-row"><input type="search" placeholder="Search regions" aria-label="Search regions" value={query()} onInput={(event) => { setQuery(event.currentTarget.value); }} /></div>
+    <div class="list-stack">
+      <article
+        class="sidebar-card wilderness-card"
+        data-wilderness
+        tabindex="0"
+        aria-label={`Edit Wilderness ${props.wilderness.name}`}
+        onClick={(event) => { props.onOpenWilderness(event.currentTarget); }}
+        onKeyDown={(event) => { activateOnKeyboard(event, () => { props.onOpenWilderness(event.currentTarget); }); }}
+      >
+        <CardHeader title={props.wilderness.name}><ModeBadge modeId={props.wilderness.mode} modes={props.modes} /></CardHeader>
+        <footer class="sidebar-card-footer wilderness-footer">
+          <span class="wilderness-kind-label">{props.wilderness.name.trim().toLocaleLowerCase() === "wilderness" ? "Outside region" : "Wilderness"}</span>
+          <div class="sidebar-card-actions">
+            <button type="button" class="sidebar-card-icon settings" title="Wilderness settings" aria-label={`Open settings for Wilderness ${props.wilderness.name}`} onClick={(event) => { event.stopPropagation(); props.onOpenWilderness(event.currentTarget); }}><Icon name="cog-6-tooth" /></button>
+          </div>
+        </footer>
+      </article>
+      <For each={visible()}>{({ region, index }) => (
+        <article
+          classList={{ "sidebar-card": true, selected: index === props.selectedIndex, disabled: region.enabled === false }}
+          tabindex="0"
+          aria-label={`Select ${region.name}`}
+          aria-current={index === props.selectedIndex ? "true" : undefined}
+          onClick={() => { props.onSelect(index); }}
+          onKeyDown={(event) => { activateOnKeyboard(event, () => { props.onSelect(index); }); }}
+        >
+          <CardHeader title={region.name}><ModeBadge modeId={region.mode} modes={props.modes} /></CardHeader>
+          <footer class="sidebar-card-footer">
+            <div class="order-controls">
+              <button type="button" class="sidebar-card-icon order-button" title="Move earlier" aria-label={`Move ${region.name} earlier`} disabled={index === 0} onClick={(event) => { event.stopPropagation(); props.onMove(index, -1); }}><Icon name="arrow-up" /></button>
+              <button type="button" class="sidebar-card-icon order-button" title="Move later" aria-label={`Move ${region.name} later`} disabled={index === props.regions.length - 1} onClick={(event) => { event.stopPropagation(); props.onMove(index, 1); }}><Icon name="arrow-down" /></button>
+            </div>
+            <div class="sidebar-card-actions">
+              <button type="button" class="sidebar-card-icon settings" title="Region settings" aria-label={`Open settings for ${region.name}`} onClick={(event) => { event.stopPropagation(); props.onOpenRegion(index, event.currentTarget); }}><Icon name="cog-6-tooth" /></button>
+              <button type="button" class="sidebar-card-icon" title="Duplicate region" aria-label={`Duplicate ${region.name}`} onClick={(event) => { event.stopPropagation(); props.onDuplicate(index); }}><Icon name="square-2-stack" /></button>
+              <button type="button" class="sidebar-card-icon danger" title="Delete region" aria-label={`Delete ${region.name}`} onClick={(event) => { event.stopPropagation(); props.onDelete(index); }}><Icon name="trash" /></button>
+            </div>
+          </footer>
+        </article>
+      )}</For>
+      <Show when={visible().length === 0}><div class="empty-state"><div><strong>No matching regions</strong><span>Clear the search to show every region.</span></div></div></Show>
+    </div>
+  </>;
+}
+
+interface ModeSidebarProps {
+  readonly modes: readonly ModeSummary[];
+  readonly selectedIndex: number;
+  readonly onSelect: (index: number) => void;
+  readonly onMove: (index: number, direction: number) => void;
+  readonly onDuplicate: (index: number) => void;
+  readonly onDelete: (index: number) => void;
+}
+
+function ModeSidebar(props: ModeSidebarProps) {
+  const [query, setQuery] = createSignal("");
+  const visible = createMemo(() => {
+    const needle = query().trim().toLocaleLowerCase();
+    return props.modes.map((mode, index) => ({ mode, index })).filter(({ mode }) => !needle || `${mode.name} ${mode.id}`.toLocaleLowerCase().includes(needle));
+  });
+  return <>
+    <div class="panel-heading"><div><h2>Modes</h2><p>Ordered presets for area actions, combat, color, and messages.</p></div></div>
+    <div class="search-row"><input type="search" placeholder="Search modes" aria-label="Search modes" value={query()} onInput={(event) => { setQuery(event.currentTarget.value); }} /></div>
+    <div class="list-stack">
+      <For each={visible()}>{({ mode, index }) => (
+        <article classList={{ "sidebar-card": true, selected: index === props.selectedIndex }} tabindex="0" aria-label={`Select ${mode.name}`} aria-current={index === props.selectedIndex ? "true" : undefined} onClick={() => { props.onSelect(index); }} onKeyDown={(event) => { activateOnKeyboard(event, () => { props.onSelect(index); }); }}>
+          <CardHeader title={mode.name}><ModeBadge modeId={mode.id} modes={props.modes} /></CardHeader>
+          <footer class="sidebar-card-footer">
+            <div class="order-controls">
+              <button type="button" class="sidebar-card-icon order-button" aria-label={`Move ${mode.name} earlier`} disabled={index === 0} onClick={(event) => { event.stopPropagation(); props.onMove(index, -1); }}><Icon name="arrow-up" /></button>
+              <button type="button" class="sidebar-card-icon order-button" aria-label={`Move ${mode.name} later`} disabled={index === props.modes.length - 1} onClick={(event) => { event.stopPropagation(); props.onMove(index, 1); }}><Icon name="arrow-down" /></button>
+            </div>
+            <div class="sidebar-card-actions">
+              <button type="button" class="sidebar-card-icon" aria-label={`Duplicate ${mode.name}`} onClick={(event) => { event.stopPropagation(); props.onDuplicate(index); }}><Icon name="square-2-stack" /></button>
+              <button type="button" class="sidebar-card-icon danger" aria-label={`Delete ${mode.name}`} disabled={props.modes.length === 1} onClick={(event) => { event.stopPropagation(); props.onDelete(index); }}><Icon name="trash" /></button>
+            </div>
+          </footer>
+        </article>
+      )}</For>
+      <Show when={visible().length === 0}><div class="empty-state"><div><strong>No matching modes</strong><span>Clear the search to show every mode.</span></div></div></Show>
+    </div>
+  </>;
+}
+
+interface MessageSummary { readonly id: string; readonly label: string; readonly enabled: boolean; readonly outputCount: number; readonly cooldownSeconds: number; }
+
+function MessageSidebar(props: { readonly messages: readonly MessageSummary[]; readonly selectedId: string; readonly onSelect: (id: string) => void }) {
+  return <>
+    <div class="panel-heading"><div><h2>Global messages</h2><p>Each event and output channel can be enabled and customized independently.</p></div></div>
+    <div class="list-stack">
+      <For each={props.messages}>{(message) => (
+        <button type="button" classList={{ "sidebar-card": true, "message-nav-item": true, selected: props.selectedId === message.id, disabled: !message.enabled }} onClick={() => { props.onSelect(message.id); }}>
+          <CardHeader title={message.label}><span classList={{ badge: true, pve: message.enabled }}>{message.enabled ? "On" : "Off"}</span></CardHeader>
+          <CardDetail parts={[`${message.outputCount} output${message.outputCount === 1 ? "" : "s"}`, `${message.cooldownSeconds}s cooldown`]} />
+        </button>
+      )}</For>
+      <button type="button" classList={{ "sidebar-card": true, "message-nav-item": true, selected: props.selectedId === "localization" }} onClick={() => { props.onSelect("localization"); }}>
+        <CardHeader title="Localization" />
+        <CardDetail parts={["Action names"]} />
+      </button>
+    </div>
+    <p class="help">A region uses these global defaults unless it overrides an event.</p>
+  </>;
+}
+
+interface SidebarConfig {
+  readonly wilderness: AreaSummary;
+  readonly regions: readonly RegionSummary[];
+  readonly modes: readonly ModeSummary[];
+  readonly settings: { readonly hotReload: boolean; readonly hotReloadSeconds: number; readonly worldRules: boolean; readonly adminBypass: boolean };
+  readonly regionalCombat: { readonly enabled: boolean };
+}
+
+export interface SidebarState {
+  readonly section: EditorSection;
+  readonly config: SidebarConfig;
+  readonly selectedRegionIndex: number | null;
+  readonly selectedModeIndex: number;
+  readonly selectedMessageId: string;
+  readonly messages: readonly MessageSummary[];
+}
+
+export interface SidebarActions {
+  readonly selectRegion: (index: number) => void;
+  readonly openWilderness: (trigger: HTMLElement) => void;
+  readonly openRegion: (index: number, trigger: HTMLElement) => void;
+  readonly moveRegion: (index: number, direction: number) => void;
+  readonly duplicateRegion: (index: number) => void;
+  readonly deleteRegion: (index: number) => void;
+  readonly selectMode: (index: number) => void;
+  readonly moveMode: (index: number, direction: number) => void;
+  readonly duplicateMode: (index: number) => void;
+  readonly deleteMode: (index: number) => void;
+  readonly selectMessage: (id: string) => void;
+}
+
+function Sidebar(props: { readonly state: SidebarState; readonly actions: SidebarActions }) {
+  return <>
+    <Show when={props.state.section === "regions"}><RegionSidebar wilderness={props.state.config.wilderness} regions={props.state.config.regions} modes={props.state.config.modes} selectedIndex={props.state.selectedRegionIndex} onSelect={props.actions.selectRegion} onOpenWilderness={props.actions.openWilderness} onOpenRegion={props.actions.openRegion} onMove={props.actions.moveRegion} onDuplicate={props.actions.duplicateRegion} onDelete={props.actions.deleteRegion} /></Show>
+    <Show when={props.state.section === "modes"}><ModeSidebar modes={props.state.config.modes} selectedIndex={props.state.selectedModeIndex} onSelect={props.actions.selectMode} onMove={props.actions.moveMode} onDuplicate={props.actions.duplicateMode} onDelete={props.actions.deleteMode} /></Show>
+    <Show when={props.state.section === "messages"}><MessageSidebar messages={props.state.messages} selectedId={props.state.selectedMessageId} onSelect={props.actions.selectMessage} /></Show>
+    <Show when={props.state.section === "settings"}>
+      <div class="panel-heading"><div><h2>Runtime settings</h2><p>Safe defaults are supplied; most servers only need regions and modes.</p></div></div>
+      <div class="list-stack">
+        <div class="sidebar-card"><CardHeader title="Hot reload"><span classList={{ badge: true, pve: props.state.config.settings.hotReload }}>{props.state.config.settings.hotReload ? "On" : "Off"}</span></CardHeader><CardDetail parts={[`Every ${props.state.config.settings.hotReloadSeconds}s`]} /></div>
+        <div class="sidebar-card"><CardHeader title="Regional combat authority"><span classList={{ badge: true, pve: props.state.config.regionalCombat.enabled }}>{props.state.config.regionalCombat.enabled ? "On" : "Off"}</span></CardHeader><CardDetail parts={[props.state.config.regionalCombat.enabled ? "PalLaw manages regional final damage and regional PvP" : "All combat remains vanilla"]} /></div>
+        <div class="sidebar-card"><CardHeader title="World actions"><span classList={{ badge: true, pve: props.state.config.settings.worldRules }}>{props.state.config.settings.worldRules ? "On" : "Off"}</span></CardHeader><CardDetail parts={[props.state.config.settings.adminBypass ? "Admins bypass restrictions" : "Admins follow restrictions"]} /></div>
+      </div>
+    </Show>
+    <Show when={props.state.section === "json"}>
+      <div class="panel-heading"><div><h2>Raw configuration</h2><p>The form and JSON editor modify the same <code>PalLaw.json</code> document.</p></div></div>
+      <div class="section-card"><div class="section-card-body"><p class="help">JSON was selected because it can be parsed identically by the DLL and browser, validated with the bundled schema, and edited without additional runtime dependencies.</p></div></div>
+    </Show>
+  </>;
+}
+
+export function mountSidebar(element: HTMLElement, initial: SidebarState, actions: SidebarActions): { update(next: SidebarState): void; dispose(): void } {
+  const [state, setState] = createSignal(initial);
+  const dispose = render(() => <Sidebar state={state()} actions={actions} />, element);
+  return { update: setState, dispose };
+}

@@ -1,4 +1,16 @@
-export const MAPS = Object.freeze([
+export type CoordinatePoint = readonly [number, number];
+
+export interface MapDefinition {
+  readonly id: string;
+  readonly label: string;
+  readonly projection: "paldb-world";
+  readonly canvas: Readonly<{ width: number; height: number }>;
+  readonly inGameCoordinates: Readonly<{ scale: number; mapXOffset: number; mapYOffset: number }>;
+  readonly tiles: Readonly<{ root: string; zoom: number; columns: number; rows: number }>;
+  readonly bounds: Readonly<{ minX: number; minY: number; maxX: number; maxY: number }>;
+}
+
+export const MAPS: readonly MapDefinition[] = Object.freeze([
   Object.freeze({
     id: "world",
     label: "World",
@@ -33,7 +45,7 @@ export const MAPS = Object.freeze([
   })
 ]);
 
-export function worldToInGameMap([worldX, worldY], mapDefinition = MAPS[0]) {
+export function worldToInGameMap([worldX, worldY]: CoordinatePoint, mapDefinition: MapDefinition = MAPS[0]!): CoordinatePoint {
   const transform = mapDefinition.inGameCoordinates;
   return [
     (Number(worldY) + transform.mapXOffset) / transform.scale,
@@ -41,7 +53,7 @@ export function worldToInGameMap([worldX, worldY], mapDefinition = MAPS[0]) {
   ];
 }
 
-export function inGameMapToWorld([mapX, mapY], mapDefinition = MAPS[0]) {
+export function inGameMapToWorld([mapX, mapY]: CoordinatePoint, mapDefinition: MapDefinition = MAPS[0]!): CoordinatePoint {
   const transform = mapDefinition.inGameCoordinates;
   return [
     Number(mapY) * transform.scale - transform.mapYOffset,
@@ -49,7 +61,7 @@ export function inGameMapToWorld([mapX, mapY], mapDefinition = MAPS[0]) {
   ];
 }
 
-export function worldToMapFraction([worldX, worldY], mapDefinition) {
+export function worldToMapFraction([worldX, worldY]: CoordinatePoint, mapDefinition: MapDefinition): CoordinatePoint {
   const { minX, minY, maxX, maxY } = mapDefinition.bounds;
   const xFraction = (Number(worldX) - minX) / (maxX - minX);
   const yFraction = (Number(worldY) - minY) / (maxY - minY);
@@ -58,7 +70,7 @@ export function worldToMapFraction([worldX, worldY], mapDefinition) {
     : [xFraction, yFraction];
 }
 
-export function mapFractionToWorld([horizontal, vertical], mapDefinition) {
+export function mapFractionToWorld([horizontal, vertical]: CoordinatePoint, mapDefinition: MapDefinition): CoordinatePoint {
   const { minX, minY, maxX, maxY } = mapDefinition.bounds;
   return mapDefinition.projection === "paldb-world"
     ? [minX + Number(vertical) * (maxX - minX), minY + Number(horizontal) * (maxY - minY)]

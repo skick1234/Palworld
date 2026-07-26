@@ -9,35 +9,55 @@ export const CONFIG_LIMITS = Object.freeze({
   errorBytes: 512
 });
 
+export type ConfigSource = string | ArrayBuffer | ArrayBufferView;
+export type ConfigSourceErrorCode =
+  | "RawByteLimit"
+  | "InvalidEncoding"
+  | "InvalidJson"
+  | "NestingDepth"
+  | "DuplicateKey"
+  | "RegionLimit"
+  | "CombatEntryLimit"
+  | "PolygonPointLimit"
+  | "TotalPolygonPointLimit";
+
+type JsonObject = Record<string, unknown>;
+
+function isJsonObject(value: unknown): value is JsonObject {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
 const encoder = new TextEncoder();
 const fatalDecoder = new TextDecoder("utf-8", { fatal: true });
 
 export class ConfigSourceError extends Error {
-  constructor(message, code) {
+  readonly code: ConfigSourceErrorCode;
+
+  constructor(message: string, code: ConfigSourceErrorCode) {
     super(message);
     this.name = "ConfigSourceError";
     this.code = code;
   }
 }
 
-function fail(message, code) {
+function fail(message: string, code: ConfigSourceErrorCode): never {
   throw new ConfigSourceError(message, code);
 }
 
-function sourceBytes(source) {
+function sourceBytes(source: ConfigSource): Uint8Array {
   if (typeof source === "string") return encoder.encode(source);
   if (source instanceof ArrayBuffer) return new Uint8Array(source);
   if (ArrayBuffer.isView(source)) return new Uint8Array(source.buffer, source.byteOffset, source.byteLength);
   throw new TypeError("Configuration source must be a string, ArrayBuffer, or byte view.");
 }
 
-function decodeSource(source) {
+function decodeSource(source: ConfigSource): string {
   const bytes = sourceBytes(source);
   if (bytes.byteLength > CONFIG_LIMITS.rawBytes) {
     fail(`Configuration exceeds the ${CONFIG_LIMITS.rawBytes}-byte limit.`, "RawByteLimit");
   }
 
-  let text;
+  let text: string;
   try {
     text = fatalDecoder.decode(bytes);
   } catch {
@@ -47,18 +67,18 @@ function decodeSource(source) {
   return text;
 }
 
-function tokenizeAndCheck(text) {
+function tokenizeAndCheck(text: string): void {
   let index = 0;
 
-  function syntax(message) {
+  function syntax(message: string): never {
     fail(`Invalid JSON at byte-independent character ${index}: ${message}`, "InvalidJson");
   }
 
-  function whitespace() {
+  function whitespace(): void {
     while (index < text.length && /\s/u.test(text[index])) index += 1;
   }
 
-  function stringToken() {
+  function stringToken(): string {
     if (text[index] !== '"') syntax("expected a string");
     const start = index;
     index += 1;
@@ -67,7 +87,7 @@ function tokenizeAndCheck(text) {
       if (character === '"') {
         index += 1;
         try {
-          return JSON.parse(text.slice(start, index));
+          return JSON.parse(text.slice(start, index)) as string;
         } catch {
           syntax("invalid string escape");
         }
@@ -91,7 +111,7 @@ function tokenizeAndCheck(text) {
     syntax("unterminated string");
   }
 
-  function containerDepth(depth) {
+  function containerDepth(depth: number): number {
     const next = depth + 1;
     if (next > CONFIG_LIMITS.nestingDepth) {
       fail(`JSON container nesting exceeds depth ${CONFIG_LIMITS.nestingDepth}.`, "NestingDepth");
@@ -99,9 +119,9 @@ function tokenizeAndCheck(text) {
     return next;
   }
 
-  function object(depth) {
+  function object(depth: number): void {
     const currentDepth = containerDepth(depth);
-    const keys = new Set();
+    const keys = new Set<string>();
     index += 1;
     whitespace();
     if (text[index] === "}") {
@@ -128,7 +148,7 @@ function tokenizeAndCheck(text) {
     syntax("unterminated object");
   }
 
-  function array(depth) {
+  function array(depth: number): void {
     const currentDepth = containerDepth(depth);
     index += 1;
     whitespace();
@@ -149,14 +169,14 @@ function tokenizeAndCheck(text) {
     syntax("unterminated array");
   }
 
-  function scalar() {
+  function scalar(): void {
     const remainder = text.slice(index);
     const match = /^(?:-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null)/u.exec(remainder);
     if (!match) syntax("expected a JSON value");
     index += match[0].length;
   }
 
-  function value(depth) {
+  function value(depth: number): void {
     whitespace();
     if (text[index] === "{") object(depth);
     else if (text[index] === "[") array(depth);
@@ -169,22 +189,23 @@ function tokenizeAndCheck(text) {
   if (index !== text.length) syntax("unexpected trailing content");
 }
 
-export function validateRawConfigurationLimits(document) {
-  if (!document || typeof document !== "object" || Array.isArray(document)) return;
+export function validateRawConfigurationLimits(document: unknown): void {
+  if (!isJsonObject(document)) return;
   const regions = Array.isArray(document.regions) ? document.regions : [];
   if (regions.length > CONFIG_LIMITS.regions) {
     fail(`regions contains more than ${CONFIG_LIMITS.regions} entries.`, "RegionLimit");
   }
 
-  const areas = [{ value: document.wilderness, path: "wilderness" }];
+  const areas: Array<{ value: unknown; path: string }> = [{ value: document.wilderness, path: "wilderness" }];
   regions.forEach((region, index) => areas.push({ value: region, path: `regions[${index}]` }));
   let totalPoints = 0;
   for (const area of areas) {
-    const combat = area.value?.combat;
+    if (!isJsonObject(area.value)) continue;
+    const combat = area.value.combat;
     if (Array.isArray(combat) && combat.length > CONFIG_LIMITS.combatEntriesPerArea) {
       fail(`${area.path}.combat contains more than ${CONFIG_LIMITS.combatEntriesPerArea} entries.`, "CombatEntryLimit");
     }
-    const points = area.value?.polygon;
+    const points = area.value.polygon;
     if (!Array.isArray(points)) continue;
     if (points.length > CONFIG_LIMITS.polygonPoints) {
       fail(`${area.path}.polygon contains more than ${CONFIG_LIMITS.polygonPoints} points.`, "PolygonPointLimit");
@@ -196,31 +217,31 @@ export function validateRawConfigurationLimits(document) {
   }
 }
 
-export function parseConfigSource(source) {
+export function parseConfigSource(source: ConfigSource): unknown {
   const text = decodeSource(source);
   tokenizeAndCheck(text);
-  let document;
+  let document: unknown;
   try {
     document = JSON.parse(text);
   } catch (error) {
-    fail(`Invalid JSON: ${error.message}`, "InvalidJson");
+    fail(`Invalid JSON: ${error instanceof Error ? error.message : String(error)}`, "InvalidJson");
   }
   validateRawConfigurationLimits(document);
   return document;
 }
 
-export function truncateUtf8(value, maximumBytes = CONFIG_LIMITS.errorBytes) {
+export function truncateUtf8(value: unknown, maximumBytes = CONFIG_LIMITS.errorBytes): string {
   const text = String(value);
   const bytes = encoder.encode(text);
   if (bytes.byteLength <= maximumBytes) return text;
   return new TextDecoder().decode(bytes.slice(0, maximumBytes)).replace(/\uFFFD$/u, "");
 }
 
-export function createBoundedErrorSink() {
-  const details = [];
+export function createBoundedErrorSink(): { push(...messages: unknown[]): number; finalize(): string[] } {
+  const details: string[] = [];
   let total = 0;
   return {
-    push(...messages) {
+    push(...messages: unknown[]) {
       for (const message of messages) {
         total += 1;
         if (details.length < CONFIG_LIMITS.detailedErrors) details.push(truncateUtf8(message));

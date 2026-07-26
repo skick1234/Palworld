@@ -24,9 +24,11 @@ import {
   validateConfig,
   worldToInGameMap,
   worldToMapFraction
-} from "./rules-core.js?v=7";
+} from "./domain/rules";
 import { createMessageEditor, renderControlRow, renderControlRowGroup } from "./message-editor.js?v=7";
 import { createDocumentStore } from "./document-store.js?v=7";
+import { mountSidebar } from "./ui/Sidebar";
+import { mountWorkspaceViewNav } from "./ui/WorkspaceViewNav";
 
 const STORAGE_KEY = "pallaw.studio.v1";
 
@@ -104,6 +106,57 @@ let editingRegionShape = false;
 let suppressRegionClick = false;
 let editingWilderness = false;
 let activeAreaSettingsTrigger = null;
+
+const workspaceViewNavigation = mountWorkspaceViewNav(
+  elements.workspaceViewNav,
+  { section: activeSection, view: workspaceView },
+  (view) => {
+    workspaceView = view;
+    renderWorkspace();
+    scheduleMapLayoutSync();
+  }
+);
+
+const sidebarNavigation = mountSidebar(elements.sidebar, currentSidebarState(), {
+  selectRegion,
+  openWilderness: openWildernessEditor,
+  openRegion: openRegionEditor,
+  moveRegion,
+  duplicateRegion,
+  deleteRegion,
+  selectMode: openModeEditor,
+  moveMode,
+  duplicateMode,
+  deleteMode,
+  selectMessage(id) {
+    selectedMessagesPanelId = id;
+    workspaceView = "edit";
+    renderWorkspace();
+    renderSidebar();
+    renderMessagesInspector();
+  }
+});
+
+function currentSidebarState() {
+  return {
+    section: activeSection,
+    config,
+    selectedRegionIndex,
+    selectedModeIndex,
+    selectedMessageId: selectedMessagesPanelId,
+    messages: MESSAGE_EVENTS.map((event) => {
+      const message = config.messages[event.id];
+      const outputCount = enabledMessageOutputCount(message);
+      return {
+        id: event.id,
+        label: event.label,
+        enabled: config.messages.enabled && message.enabled && outputCount > 0,
+        outputCount,
+        cooldownSeconds: message.cooldownSeconds
+      };
+    })
+  };
+}
 
 
 const map = L.map(elements.map, {
@@ -359,21 +412,10 @@ function renderWorkspace() {
   elements.workspace.dataset.section = activeSection;
   elements.workspace.dataset.view = workspaceView;
   elements.workspace.dataset.layout = ["regions", "modes", "messages"].includes(activeSection) ? "split" : "single";
-  const views = activeSection === "regions"
-    ? [["list", "Regions"], ["map", "Map"]]
-    : activeSection === "modes"
-      ? [["list", "Modes"], ["edit", "Mode"]]
-      : activeSection === "messages"
-        ? [["list", "Events"], ["edit", selectedMessagesPanelId === LOCALIZATION_PANEL_ID ? "Localization" : "Message"]]
-        : [];
-  elements.workspaceViewNav.innerHTML = views.map(([id, label]) => `<button type="button" data-workspace-view="${id}" class="${workspaceView === id ? "active" : ""}">${label}</button>`).join("");
-  elements.workspaceViewNav.hidden = !views.length;
-  elements.workspaceViewNav.querySelectorAll("[data-workspace-view]").forEach((button) => {
-    button.addEventListener("click", () => {
-      workspaceView = button.dataset.workspaceView;
-      renderWorkspace();
-      scheduleMapLayoutSync();
-    });
+  workspaceViewNavigation.update({
+    section: activeSection,
+    view: workspaceView,
+    messageLabel: selectedMessagesPanelId === LOCALIZATION_PANEL_ID ? "Localization" : "Message"
   });
 }
 
@@ -1086,11 +1128,7 @@ function renderJsonSidebar() {
 }
 
 function renderSidebar() {
-  if (activeSection === "regions") renderRegionSidebar();
-  else if (activeSection === "modes") renderModeSidebar();
-  else if (activeSection === "messages") renderMessagesSidebar();
-  else if (activeSection === "settings") renderSettingsSidebar();
-  else renderJsonSidebar();
+  sidebarNavigation.update(currentSidebarState());
 }
 
 function modeSelector(area, scope) {

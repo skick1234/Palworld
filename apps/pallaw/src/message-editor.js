@@ -6,7 +6,7 @@ import {
   enabledMessageOutputCount,
   formatTemplate,
   resolveAreaMessages
-} from "./rules-core.js?v=7";
+} from "./domain/rules";
 
 export function renderControlRow({ label, description = "", control, labelControl = false, className = "" }, escapeHtml) {
   const tag = labelControl ? "label" : "div";

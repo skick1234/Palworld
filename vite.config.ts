@@ -4,8 +4,8 @@ import solid from "vite-plugin-solid";
 
 const root = import.meta.dirname;
 
-export default defineConfig({
-  plugins: [solid()],
+export default defineConfig(({ mode }) => ({
+  plugins: [solid({ hot: mode !== "test" })],
   build: {
     outDir: resolve(root, "site/pallaw/build"),
     emptyOutDir: true,
@@ -20,4 +20,4 @@ export default defineConfig({
       }
     }
   }
-});
+}));
