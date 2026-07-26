@@ -4,6 +4,14 @@ import {
   roundedCombatPower,
   scoredPassiveContributions,
 } from "./player-detail";
+import {
+  buildRankings,
+  calculatePalCombatPower,
+  calculatePalFirepower,
+  type GuildRankingInput,
+  type PartyPalRankingInput,
+  type PlayerRankingInput,
+} from "./scoring";
 
 type AccessMode = "public" | "operator" | "disabled";
 type Access = { mode: AccessMode; fixed: boolean; allowed_modes: AccessMode[] };
@@ -314,14 +322,14 @@ function flattenedPlayer(player: JsonObject): JsonObject {
   const counts = object(player.counts);
   const scores = object(player.scores);
   return {
-    id: player.id,
+    id: player.id ?? player.player_id,
     display_name: player.display_name,
     guild_name: player.guild_name,
     level: player.level,
     party_pals: counts.party_pals,
     owned_pals: counts.owned_pals,
-    team_firepower: scores.team_firepower,
-    team_combat_power: scores.team_combat_power,
+    team_firepower: player.team_firepower ?? scores.team_firepower,
+    team_combat_power: player.team_combat_power ?? scores.team_combat_power,
     complete: player.complete,
   };
 }
@@ -329,16 +337,29 @@ function flattenedPlayer(player: JsonObject): JsonObject {
 type RankingData = { players: JsonObject[]; pals: JsonObject[]; guilds: JsonObject[] };
 
 async function loadRankings(): Promise<RankingData> {
-  const results = await Promise.all([
-    api("/v1/leaderboards/players", "listPlayerLeaderboard"),
-    api("/v1/leaderboards/pals", "listPalLeaderboard"),
-    api("/v1/leaderboards/guilds", "listGuildLeaderboard"),
-  ]);
-  return {
-    players: items(results[0]).sort((a, b) => score(b.team_combat_power) - score(a.team_combat_power)),
-    pals: items(results[1]).sort((a, b) => score(b.combat_power) - score(a.combat_power)),
-    guilds: items(results[2]).sort((a, b) => score(b.combat_power) - score(a.combat_power)),
-  };
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const init = attempt === 0 ? {} : { headers: { "Cache-Control": "no-cache" } };
+    const results = await Promise.all([
+      apiResponse("/v1/leaderboards/players", "listPlayerLeaderboard", init),
+      apiResponse("/v1/leaderboards/pals", "listPalLeaderboard", init),
+      apiResponse("/v1/leaderboards/guilds", "listGuildLeaderboard", init),
+      apiResponse("/v1/scoring-policy", "getScoringPolicy", init),
+    ]);
+    const datasetIds = results.slice(0, 3).map(
+      ({ response }) => response.headers.get("palops-dataset-id"),
+    );
+    if (datasetIds.every((id) => id && id === datasetIds[0])) {
+      const policy = object(results[3].body);
+      return buildRankings(
+        items(results[0].body) as unknown as PlayerRankingInput[],
+        items(results[1].body) as unknown as PartyPalRankingInput[],
+        items(results[2].body) as unknown as GuildRankingInput[],
+        object(policy.weights) as Record<string, number>,
+        typeof policy.policy_version === "number" ? policy.policy_version : 1,
+      ) as unknown as RankingData;
+    }
+  }
+  throw new Error("PalOps raw collections changed while Rankings loaded. Try again.");
 }
 
 function rankingName(category: RankingCategory, record: JsonObject): string {
@@ -596,7 +617,7 @@ function openPlayer(id: string) {
 
 async function renderPlayers(epoch: number) {
   if (selectedPlayerId) return renderPlayerDetail(selectedPlayerId, epoch);
-  const players = items(await api("/v1/players", "listPlayers")).map(flattenedPlayer);
+  const players = (await loadRankings()).players.map(flattenedPlayer);
   if (epoch !== renderEpoch) return;
   const toolbar = element("div", "list-toolbar");
   const search = element("input") as HTMLInputElement;
@@ -619,17 +640,44 @@ async function renderPlayers(epoch: number) {
 }
 
 async function renderPlayerDetail(playerId: string, epoch: number) {
-  const [detailValue, presenceValue, operationsValue] = await Promise.all([
+  const [detailValue, presenceValue, operationsValue, policyValue] = await Promise.all([
     api(`/v1/players/${encodeURIComponent(playerId)}`, "getPlayer"),
     api(`/v1/players/${encodeURIComponent(playerId)}/presence`, "getPlayerPresence").catch(() => null),
     authenticated
       ? api("/v1/ops", "listOperations").catch(() => null)
       : Promise.resolve(null),
+    api("/v1/scoring-policy", "getScoringPolicy"),
   ]);
   if (epoch !== renderEpoch) return;
   byId("view-kicker").textContent = "Player detail";
   const detail = detailValue as JsonObject;
   const presence = presenceValue as JsonObject | null;
+  const policy = object(policyValue);
+  const weights = object(policy.weights) as Record<string, number>;
+  const policyVersion = typeof policy.policy_version === "number"
+    ? policy.policy_version
+    : 1;
+  const calculatedParty = items(detail.party_pals).map((rawPal) => {
+    const pal = {
+      ...rawPal,
+      pal_id: rawPal.id,
+      owner_player_id: detail.id,
+      owner_display_name: detail.display_name,
+      guild_id: detail.guild_id,
+      guild_name: detail.guild_name,
+    } as unknown as PartyPalRankingInput;
+    const combat = calculatePalCombatPower(pal, weights);
+    return {
+      ...rawPal,
+      firepower: calculatePalFirepower(pal),
+      combat_power: combat.value,
+      passives: combat.contributions,
+    };
+  });
+  const teamCombatPower = calculatedParty.reduce(
+    (total, pal) => total + Number(pal.combat_power),
+    0,
+  );
   byId("view-title").textContent = display(detail.display_name);
   byId("view-summary").textContent = `Public progression and current Party Pals for ${display(detail.display_name)}.`;
   const actions = element("div", "detail-actions");
@@ -643,12 +691,11 @@ async function renderPlayerDetail(playerId: string, epoch: number) {
   actions.append(back, operate);
   const metrics = element("section", "metric-strip detail-metrics");
   const counts = object(detail.counts);
-  const scores = object(detail.scores);
   metrics.append(
     metric("Level", detail.level),
     metric("Party Pals", counts.party_pals),
     metric("Owned Pals", counts.owned_pals),
-    metric("Team combat power", roundedCombatPower(scores.team_combat_power)),
+    metric("Team combat power", roundedCombatPower(teamCombatPower)),
   );
   const grid = element("div", "grid");
   const overview = panel("Profile", String(detail.id ?? ""));
@@ -693,7 +740,7 @@ async function renderPlayerDetail(playerId: string, epoch: number) {
   }
   const party = panel("Party Pals", "Current five-slot party", true);
   const partyGrid = element("div", "party-grid");
-  for (const pal of items(detail.party_pals)) {
+  for (const pal of calculatedParty) {
     const card = element("article", "party-pal");
     const heading = element("header");
     const identity = element("div", "pal-identity");

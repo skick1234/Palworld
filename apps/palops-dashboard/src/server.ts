@@ -2,6 +2,7 @@ import { dirname, extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { matchOperation, readOperations, type ContractOperation } from "./contract";
 import { credentialsWereAccepted } from "./security";
+import { SnapshotResponseCache } from "./snapshot-cache";
 
 type Access = { mode: "public" | "operator" | "disabled"; fixed: boolean; allowed_modes: string[] };
 type Capabilities = { endpoints: Record<string, Access> };
@@ -24,6 +25,16 @@ const maximumSessions = 256;
 const maximumProxyBodyBytes = 1024 * 1024;
 const operations = readOperations(await Bun.file(contractPath).json()) as ContractOperation[];
 let capabilityCache: { value: Capabilities; expiresAt: number } | null = null;
+const snapshotCache = new SnapshotResponseCache();
+const snapshotOperations = new Set([
+  "listPlayers",
+  "listPlayerLeaderboard",
+  "listPalLeaderboard",
+  "listGuilds",
+  "listGuildLeaderboard",
+  "listOnlinePlayers",
+  "getWorldMap",
+]);
 
 const mime: Record<string, string> = {
   ".css": "text/css; charset=utf-8", ".html": "text/html; charset=utf-8",
@@ -168,7 +179,29 @@ async function proxy(request: Request, upstreamPath: string): Promise<Response> 
   const hasBody = request.method === "POST" || request.method === "PUT";
   const body = hasBody ? await readBoundedBody(request) : undefined;
   if (hasBody && request.body && body === null) return json(413, { error: "Proxy request is too large." });
-  const upstream = await fetch(`${apiBase}${upstreamPath}${new URL(request.url).search}`, {
+  const upstreamUrl = `${apiBase}${upstreamPath}${new URL(request.url).search}`;
+  if (request.method === "GET" && snapshotOperations.has(operation.operationId)) {
+    const cacheKey = `${access.mode}:${operation.operationId}:${upstreamPath}${new URL(request.url).search}`;
+    const response = await snapshotCache.fetch(
+      cacheKey,
+      request.headers.get("if-none-match"),
+      async (retainedEtag) => {
+        const upstreamHeaders = new Headers(headers);
+        upstreamHeaders.delete("If-None-Match");
+        if (retainedEtag) upstreamHeaders.set("If-None-Match", retainedEtag);
+        return await fetch(upstreamUrl, {
+          method: "GET",
+          headers: upstreamHeaders,
+          redirect: "manual",
+          signal: AbortSignal.timeout(8000),
+        });
+      },
+      request.headers.get("cache-control")?.includes("no-cache") === true,
+    );
+    response.headers.set("Vary", "Cookie");
+    return response;
+  }
+  const upstream = await fetch(upstreamUrl, {
     method: request.method, headers, body, redirect: "manual", signal: AbortSignal.timeout(8000),
   });
   if (operation.operationId === "updateConfig" && upstream.ok) capabilityCache = null;
