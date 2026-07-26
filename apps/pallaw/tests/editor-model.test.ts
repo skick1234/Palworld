@@ -14,10 +14,17 @@ describe("editor model", () => {
     });
     const model = createEditorModel(document);
     model.selectRegion(1);
+    model.setSelectedMessage("actionDenied");
+    model.setActiveMap("tree");
+    model.setAreaDialog(true, true);
 
     document.dispatch({ type: "mutate", apply: (draft) => { draft.regions.splice(1, 1); } });
 
     expect(model.state.selectedRegionIndex).toBe(0);
+    expect(model.state.selectedMessageId).toBe("actionDenied");
+    expect(model.state.activeMapId).toBe("tree");
+    expect(model.state.areaDialogOpen).toBe(true);
+    expect(model.state.editingWilderness).toBe(true);
     model.dispose();
   });
 });

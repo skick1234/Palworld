@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "typecheck": "tsc --noEmit",
-    "build:pallaw": "vite build",
-    "test:pallaw": "vitest run apps/pallaw/tests"
+    "typecheck": "bun x tsc --noEmit",
+    "build:pallaw": "bun x vite build",
+    "test:pallaw": "bun x vitest run apps/pallaw/tests"
   },
   "dependencies": {
     "solid-js": "^1.9.14"

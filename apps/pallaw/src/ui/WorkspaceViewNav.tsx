@@ -1,5 +1,4 @@
-import { For, createEffect, createSignal } from "solid-js";
-import { render } from "solid-js/web";
+import { For } from "solid-js";
 import type { EditorSection, WorkspaceView } from "../editor/create-editor-model";
 
 interface WorkspaceViewNavProps {
@@ -32,30 +31,4 @@ export function WorkspaceViewNav(props: WorkspaceViewNavProps) {
       )}
     </For>
   );
-}
-
-interface WorkspaceViewNavState {
-  readonly section: EditorSection;
-  readonly view: WorkspaceView;
-  readonly messageLabel?: string;
-}
-
-export function mountWorkspaceViewNav(
-  element: HTMLElement,
-  initial: WorkspaceViewNavState,
-  onSelect: (view: WorkspaceView) => void
-): { update(next: WorkspaceViewNavState): void; dispose(): void } {
-  const [state, setState] = createSignal(initial);
-  const dispose = render(() => {
-    createEffect(() => { element.hidden = availableViews(state().section).length === 0; });
-    return (
-      <WorkspaceViewNav
-        section={state().section}
-        view={state().view}
-        messageLabel={state().messageLabel}
-        onSelect={onSelect}
-      />
-    );
-  }, element);
-  return { update: setState, dispose };
 }

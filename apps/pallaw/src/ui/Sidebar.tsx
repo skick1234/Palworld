@@ -1,5 +1,4 @@
 import { For, Show, createMemo, createSignal } from "solid-js";
-import { render } from "solid-js/web";
 import type { JSX } from "solid-js";
 import type { EditorSection } from "../editor/create-editor-model";
 
@@ -56,8 +55,8 @@ export interface RegionSidebarProps {
   readonly onOpenWilderness: (trigger: HTMLElement) => void;
   readonly onOpenRegion: (index: number, trigger: HTMLElement) => void;
   readonly onMove: (index: number, direction: number) => void;
-  readonly onDuplicate: (index: number) => void;
-  readonly onDelete: (index: number) => void;
+  readonly onDuplicate: (index: number, trigger: HTMLElement) => void;
+  readonly onDelete: (index: number, trigger: HTMLElement) => void;
 }
 
 export function RegionSidebar(props: RegionSidebarProps) {
@@ -106,8 +105,8 @@ export function RegionSidebar(props: RegionSidebarProps) {
             </div>
             <div class="sidebar-card-actions">
               <button type="button" class="sidebar-card-icon settings" title="Region settings" aria-label={`Open settings for ${region.name}`} onClick={(event) => { event.stopPropagation(); props.onOpenRegion(index, event.currentTarget); }}><Icon name="cog-6-tooth" /></button>
-              <button type="button" class="sidebar-card-icon" title="Duplicate region" aria-label={`Duplicate ${region.name}`} onClick={(event) => { event.stopPropagation(); props.onDuplicate(index); }}><Icon name="square-2-stack" /></button>
-              <button type="button" class="sidebar-card-icon danger" title="Delete region" aria-label={`Delete ${region.name}`} onClick={(event) => { event.stopPropagation(); props.onDelete(index); }}><Icon name="trash" /></button>
+              <button type="button" class="sidebar-card-icon" title="Duplicate region" aria-label={`Duplicate ${region.name}`} onClick={(event) => { event.stopPropagation(); props.onDuplicate(index, event.currentTarget); }}><Icon name="square-2-stack" /></button>
+              <button type="button" class="sidebar-card-icon danger" title="Delete region" aria-label={`Delete ${region.name}`} onClick={(event) => { event.stopPropagation(); props.onDelete(index, event.currentTarget); }}><Icon name="trash" /></button>
             </div>
           </footer>
         </article>
@@ -122,8 +121,8 @@ interface ModeSidebarProps {
   readonly selectedIndex: number;
   readonly onSelect: (index: number) => void;
   readonly onMove: (index: number, direction: number) => void;
-  readonly onDuplicate: (index: number) => void;
-  readonly onDelete: (index: number) => void;
+  readonly onDuplicate: (index: number, trigger: HTMLElement) => void;
+  readonly onDelete: (index: number, trigger: HTMLElement) => void;
 }
 
 function ModeSidebar(props: ModeSidebarProps) {
@@ -145,8 +144,8 @@ function ModeSidebar(props: ModeSidebarProps) {
               <button type="button" class="sidebar-card-icon order-button" aria-label={`Move ${mode.name} later`} disabled={index === props.modes.length - 1} onClick={(event) => { event.stopPropagation(); props.onMove(index, 1); }}><Icon name="arrow-down" /></button>
             </div>
             <div class="sidebar-card-actions">
-              <button type="button" class="sidebar-card-icon" aria-label={`Duplicate ${mode.name}`} onClick={(event) => { event.stopPropagation(); props.onDuplicate(index); }}><Icon name="square-2-stack" /></button>
-              <button type="button" class="sidebar-card-icon danger" aria-label={`Delete ${mode.name}`} disabled={props.modes.length === 1} onClick={(event) => { event.stopPropagation(); props.onDelete(index); }}><Icon name="trash" /></button>
+              <button type="button" class="sidebar-card-icon" aria-label={`Duplicate ${mode.name}`} onClick={(event) => { event.stopPropagation(); props.onDuplicate(index, event.currentTarget); }}><Icon name="square-2-stack" /></button>
+              <button type="button" class="sidebar-card-icon danger" aria-label={`Delete ${mode.name}`} disabled={props.modes.length === 1} onClick={(event) => { event.stopPropagation(); props.onDelete(index, event.currentTarget); }}><Icon name="trash" /></button>
             </div>
           </footer>
         </article>
@@ -199,16 +198,16 @@ export interface SidebarActions {
   readonly openWilderness: (trigger: HTMLElement) => void;
   readonly openRegion: (index: number, trigger: HTMLElement) => void;
   readonly moveRegion: (index: number, direction: number) => void;
-  readonly duplicateRegion: (index: number) => void;
-  readonly deleteRegion: (index: number) => void;
+  readonly duplicateRegion: (index: number, trigger: HTMLElement) => void;
+  readonly deleteRegion: (index: number, trigger: HTMLElement) => void;
   readonly selectMode: (index: number) => void;
   readonly moveMode: (index: number, direction: number) => void;
-  readonly duplicateMode: (index: number) => void;
-  readonly deleteMode: (index: number) => void;
+  readonly duplicateMode: (index: number, trigger: HTMLElement) => void;
+  readonly deleteMode: (index: number, trigger: HTMLElement) => void;
   readonly selectMessage: (id: string) => void;
 }
 
-function Sidebar(props: { readonly state: SidebarState; readonly actions: SidebarActions }) {
+export function Sidebar(props: { readonly state: SidebarState; readonly actions: SidebarActions }) {
   return <>
     <Show when={props.state.section === "regions"}><RegionSidebar wilderness={props.state.config.wilderness} regions={props.state.config.regions} modes={props.state.config.modes} selectedIndex={props.state.selectedRegionIndex} onSelect={props.actions.selectRegion} onOpenWilderness={props.actions.openWilderness} onOpenRegion={props.actions.openRegion} onMove={props.actions.moveRegion} onDuplicate={props.actions.duplicateRegion} onDelete={props.actions.deleteRegion} /></Show>
     <Show when={props.state.section === "modes"}><ModeSidebar modes={props.state.config.modes} selectedIndex={props.state.selectedModeIndex} onSelect={props.actions.selectMode} onMove={props.actions.moveMode} onDuplicate={props.actions.duplicateMode} onDelete={props.actions.deleteMode} /></Show>
@@ -226,10 +225,4 @@ function Sidebar(props: { readonly state: SidebarState; readonly actions: Sideba
       <div class="section-card"><div class="section-card-body"><p class="help">JSON was selected because it can be parsed identically by the DLL and browser, validated with the bundled schema, and edited without additional runtime dependencies.</p></div></div>
     </Show>
   </>;
-}
-
-export function mountSidebar(element: HTMLElement, initial: SidebarState, actions: SidebarActions): { update(next: SidebarState): void; dispose(): void } {
-  const [state, setState] = createSignal(initial);
-  const dispose = render(() => <Sidebar state={state()} actions={actions} />, element);
-  return { update: setState, dispose };
 }

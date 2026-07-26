@@ -1,4 +1,3 @@
-// @ts-nocheck -- removed as the domain types are applied in this ticket.
 export const CONFIG_VERSION = 3;
 export const CONFIG_FILE_NAME = "PalLaw.json";
 export const SCHEMA_FILE_NAME = "PalLaw.schema.json";
@@ -9,10 +8,26 @@ import {
   parseConfigSource,
   validateRawConfigurationLimits
 } from "./config-source";
+import type { ConfigSource } from "./config-source";
 import {
   addMigrationFallback,
   migrateConfiguration
 } from "./configuration-migrations";
+import type { JsonObject, MigrationDefinition, MigrationReportEntry } from "./configuration-migrations";
+import type {
+  ActionValue, AlertMessage, AreaValue, CombatOverride, EventMessage, GlobalMessages,
+  ModeValue, PalLawConfigValue, Point, RegionValue, RuntimeSettingsValue
+} from "./types";
+
+type JsonRecord = Record<string, unknown>;
+type CombatMatrix = Record<string, Record<string, boolean | undefined>>;
+type ModeDescriptor = Pick<ModeValue, "id" | "name" | "color"> & Partial<ModeValue>;
+type ErrorSink = { push(...messages: unknown[]): number };
+interface Box { minX: number; maxX: number; minY: number; maxY: number; }
+
+function messageFor(messages: GlobalMessages, eventId: string): EventMessage {
+  return messages[eventId as "regionChanged" | "actionDenied" | "levelDenied"];
+}
 
 export { CONFIG_LIMITS, ConfigSourceError, parseConfigSource } from "./config-source";
 
@@ -174,7 +189,7 @@ export const DEFAULT_REGIONAL_COMBAT = Object.freeze({
   enabled: true
 });
 
-function defaultAlerts(text, enabledPresentation, briefTone = "normal") {
+function defaultAlerts(text: string, enabledPresentation: string, briefTone = "normal") {
   return Object.fromEntries(ALERT_PRESENTATIONS.map(({ id }) => [
     id,
     {
@@ -185,7 +200,7 @@ function defaultAlerts(text, enabledPresentation, briefTone = "normal") {
   ]));
 }
 
-export const DEFAULT_MESSAGES = Object.freeze({
+export const DEFAULT_MESSAGES: Readonly<GlobalMessages> = Object.freeze({
   enabled: true,
   actionNames: { ...DEFAULT_ACTION_NAMES },
   regionChanged: {
@@ -216,32 +231,32 @@ const ALERT_PRESENTATION_IDS = new Set(ALERT_PRESENTATIONS.map((entry) => entry.
 const ALERT_TONE_IDS = new Set(ALERT_TONES.map((entry) => entry.id));
 const EPSILON = 1e-6;
 
-export function clone(value) {
+export function clone<T>(value: T): T {
   return typeof structuredClone === "function"
     ? structuredClone(value)
     : JSON.parse(JSON.stringify(value));
 }
 
-export function modeDefinition(mode, configOrModes) {
-  const modes = Array.isArray(configOrModes)
-    ? configOrModes
-    : configOrModes?.modes || STARTER_MODES;
+export function modeDefinition(mode: string | undefined, configOrModes?: PalLawConfigValue | readonly ModeDescriptor[]): ModeDescriptor {
+  const modes: readonly ModeDescriptor[] = configOrModes && "modes" in configOrModes
+    ? configOrModes.modes
+    : configOrModes ?? STARTER_MODES;
   return modes.find((entry) => entry.id === mode) || modes[0];
 }
 
-function createStarterMode({ id, name, color }) {
+function createStarterMode({ id, name, color }: ModeDescriptor): ModeValue {
   return {
     id,
     name,
     color,
     minimumLevel: null,
-    actions: modeActions(id),
+    actions: modeActions(),
     combat: modeCombat(id),
     messages: {}
   };
 }
 
-export function createDefaultConfig() {
+export function createDefaultConfig(): PalLawConfigValue {
   return {
     $schema: `./${SCHEMA_FILE_NAME}`,
     version: CONFIG_VERSION,
@@ -260,66 +275,66 @@ export function createDefaultConfig() {
   };
 }
 
-function finite(value, fallback) {
+function finite(value: unknown, fallback: number): number {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
 }
 
-function boolean(value, fallback) {
+function boolean(value: unknown, fallback: boolean): boolean {
   return typeof value === "boolean" ? value : fallback;
 }
 
-function text(value, fallback = "") {
+function text(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value : fallback;
 }
 
-function normalizeChat(value, base) {
+function normalizeChat(value: unknown, base: EventMessage["chat"]): EventMessage["chat"] {
   const result = clone(base);
   if (typeof value === "boolean") {
     result.enabled = value;
   } else if (typeof value === "string") {
     result.enabled = true;
     result.text = value;
-  } else if (value && typeof value === "object" && !Array.isArray(value)) {
+  } else if (isPlainObject(value)) {
     result.enabled = boolean(value.enabled, result.enabled);
     result.text = text(value.text, result.text);
   }
   return result;
 }
 
-function normalizeAlert(value, base, presentation) {
+function normalizeAlert(value: unknown, base: EventMessage["alerts"][string], presentation: string): EventMessage["alerts"][string] {
   const result = clone(base);
   if (typeof value === "boolean") {
     result.enabled = value;
   } else if (typeof value === "string") {
     result.enabled = true;
     result.text = value;
-  } else if (value && typeof value === "object" && !Array.isArray(value)) {
+  } else if (isPlainObject(value)) {
     result.enabled = boolean(value.enabled, result.enabled);
     result.text = text(value.text, result.text);
     if (presentation === "brief") {
-      result.tone = ALERT_TONE_IDS.has(value.tone) ? value.tone : result.tone;
+      result.tone = typeof value.tone === "string" && ALERT_TONE_IDS.has(value.tone) ? value.tone : result.tone;
     }
   }
   return result;
 }
 
-function normalizeAlerts(value, base) {
+function normalizeAlerts(value: unknown, base: EventMessage["alerts"]): EventMessage["alerts"] {
   const result = clone(base);
-  if (!value || typeof value !== "object" || Array.isArray(value)) return result;
+  if (!isPlainObject(value)) return result;
   for (const { id } of ALERT_PRESENTATIONS) {
     if (Object.hasOwn(value, id)) result[id] = normalizeAlert(value[id], result[id], id);
   }
   return result;
 }
 
-export function normalizeMessage(value, base) {
+export function normalizeMessage(value: unknown, base: EventMessage): EventMessage {
   const result = clone(base);
   if (typeof value === "boolean") {
     result.enabled = value;
     return result;
   }
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
+  if (!isPlainObject(value)) {
     return result;
   }
   result.enabled = boolean(value.enabled, result.enabled);
@@ -329,16 +344,16 @@ export function normalizeMessage(value, base) {
   return result;
 }
 
-export function enabledMessageOutputCount(message) {
+export function enabledMessageOutputCount(message: EventMessage | null | undefined): number {
   return Number(Boolean(message?.chat?.enabled)) + ALERT_PRESENTATIONS.reduce(
     (count, { id }) => count + Number(Boolean(message?.alerts?.[id]?.enabled)),
     0
   );
 }
 
-export function normalizeMessages(value, base = DEFAULT_MESSAGES, includeGlobalControls = true) {
-  const result = clone(base);
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
+export function normalizeMessages(value: unknown, base: Readonly<GlobalMessages> = DEFAULT_MESSAGES, includeGlobalControls = true): GlobalMessages {
+  const result = clone(base) as GlobalMessages;
+  if (!isPlainObject(value)) {
     return result;
   }
   if (includeGlobalControls) {
@@ -347,56 +362,59 @@ export function normalizeMessages(value, base = DEFAULT_MESSAGES, includeGlobalC
   }
   for (const event of MESSAGE_EVENTS) {
     if (Object.hasOwn(value, event.id)) {
-      result[event.id] = normalizeMessage(value[event.id], result[event.id]);
+      const id = event.id as keyof Pick<GlobalMessages, "regionChanged" | "actionDenied" | "levelDenied">;
+      result[id] = normalizeMessage(value[event.id], result[id]);
     }
   }
   return result;
 }
 
-function normalizeDisplayNames(value, defaults) {
+function normalizeDisplayNames(value: unknown, defaults: Readonly<Record<string, string>>): Record<string, string> {
   const result = { ...defaults };
-  if (!value || typeof value !== "object" || Array.isArray(value)) return result;
+  if (!isPlainObject(value)) return result;
   for (const key of Object.keys(defaults)) {
     if (typeof value[key] === "string") result[key] = value[key];
   }
   return result;
 }
 
-function normalizeActions(value) {
-  const result = {};
-  if (!value || typeof value !== "object" || Array.isArray(value)) return result;
+function normalizeActions(value: unknown): Record<string, ActionValue | undefined> {
+  const result: Record<string, ActionValue | undefined> = {};
+  if (!isPlainObject(value)) return result;
   for (const action of ACTIONS) {
     if (action.fastTravelPolicy) {
-      if (FAST_TRAVEL_POLICY_IDS.has(value[action.id])) {
-        result[action.id] = value[action.id];
+      const candidate = value[action.id];
+      if (typeof candidate === "string" && FAST_TRAVEL_POLICY_IDS.has(candidate)) {
+        result[action.id] = candidate as ActionValue;
       }
     } else if (typeof value[action.id] === "boolean") {
-      result[action.id] = value[action.id];
+      result[action.id] = value[action.id] as boolean;
     }
   }
   return result;
 }
 
-function normalizeSelection(value) {
+function normalizeSelection(value: unknown): string[] {
   const entries = Array.isArray(value) ? value : [value];
   return [...new Set(entries.filter((entry) => typeof entry === "string"))];
 }
 
-function normalizeCombat(value) {
+function normalizeCombat(value: unknown): AreaValue["combat"] {
   if (!Array.isArray(value)) return [];
   return value.map((entry) => {
-    const result = {
-      source: normalizeSelection(entry?.source),
-      target: normalizeSelection(entry?.target),
-      bidirectional: boolean(entry?.bidirectional, false)
+    const source = isPlainObject(entry) ? entry : {};
+    const result: AreaValue["combat"][number] = {
+      source: normalizeSelection(source.source),
+      target: normalizeSelection(source.target),
+      bidirectional: boolean(source.bidirectional, false)
     };
-    if (typeof entry?.allow === "boolean") result.allow = entry.allow;
+    if (typeof source.allow === "boolean") result.allow = source.allow;
     return result;
   });
 }
 
-function normalizeArea(value, fallbackName = "Region") {
-  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+function normalizeArea(value: unknown, fallbackName = "Region"): AreaValue {
+  const source = isPlainObject(value) ? value : {};
   const mode = text(source.mode, "pve");
   return {
     name: text(source.name, fallbackName),
@@ -404,19 +422,19 @@ function normalizeArea(value, fallbackName = "Region") {
     actions: normalizeActions(source.actions),
     combat: normalizeCombat(source.combat),
     messages: source.messages && typeof source.messages === "object" && !Array.isArray(source.messages)
-      ? clone(source.messages)
+      ? clone(source.messages) as Record<string, EventMessage>
       : {}
   };
 }
 
-function normalizePoint(point) {
+function normalizePoint(point: unknown): Point {
   return Array.isArray(point) && point.length >= 2
     ? [finite(point[0], 0), finite(point[1], 0)]
     : [0, 0];
 }
 
-function normalizeRegion(value, index) {
-  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+function normalizeRegion(value: unknown, index: number): RegionValue {
+  const source = isPlainObject(value) ? value : {};
   const area = normalizeArea(source, `Region ${index + 1}`);
   return {
     ...area,
@@ -429,26 +447,27 @@ function normalizeRegion(value, index) {
   };
 }
 
-function normalizeDenseActions(value) {
+function normalizeDenseActions(value: unknown): Record<string, ActionValue | undefined> {
+  const source = isPlainObject(value) ? value : {};
   return Object.fromEntries(ACTIONS.map((action) => [
     action.id,
     action.fastTravelPolicy
-      ? (FAST_TRAVEL_POLICY_IDS.has(value?.[action.id]) ? value[action.id] : "all")
-      : boolean(value?.[action.id], true)
-  ]));
+      ? (() => { const candidate = source[action.id]; return typeof candidate === "string" && FAST_TRAVEL_POLICY_IDS.has(candidate) ? candidate : "all"; })()
+      : boolean(source[action.id], true)
+  ])) as Record<string, ActionValue | undefined>;
 }
 
-function normalizeDenseCombat(value) {
+function normalizeDenseCombat(value: unknown): CombatMatrix {
+  const sourceValue = isPlainObject(value) ? value : {};
   return Object.fromEntries(ACTORS.filter((actor) => !actor.targetOnly).map((source) => [
     source.id,
     Object.fromEntries(ACTORS.map((target) => [
-      target.id,
-      boolean(value?.[source.id]?.[target.id], false)
+      target.id, boolean((() => { const row = sourceValue[source.id]; return isPlainObject(row) ? row[target.id] : undefined; })(), false)
     ]))
-  ]));
+  ])) as CombatMatrix;
 }
 
-function normalizeMode(value, index) {
+function normalizeMode(value: unknown, index: number): ModeValue {
   const source = isPlainObject(value) ? value : {};
   return {
     id: text(source.id),
@@ -459,38 +478,35 @@ function normalizeMode(value, index) {
       : null,
     actions: normalizeDenseActions(source.actions),
     combat: normalizeDenseCombat(source.combat),
-    messages: isPlainObject(source.messages) ? clone(source.messages) : {}
+    messages: isPlainObject(source.messages) ? clone(source.messages) as Record<string, EventMessage> : {}
   };
 }
 
-function normalizePolygon(value) {
+function normalizePolygon(value: unknown): Point[] {
   if (!Array.isArray(value)) return [];
   const points = value.map(normalizePoint);
   if (points.length > 1 && samePoint(points[0], points.at(-1))) points.pop();
   return points;
 }
 
-export function hydrateConfig(value) {
-  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+export function hydrateConfig(value: unknown): PalLawConfigValue {
+  const source = isPlainObject(value) ? value : {};
   const config = createDefaultConfig();
   config.$schema = text(source.$schema, config.$schema);
   config.version = Number(source.version ?? CONFIG_VERSION);
-  const regionalCombat = source.regionalCombat &&
-      typeof source.regionalCombat === "object" &&
-      !Array.isArray(source.regionalCombat)
-    ? source.regionalCombat
-    : {};
+  const regionalCombat = isPlainObject(source.regionalCombat) ? source.regionalCombat : {};
   config.regionalCombat = {
     enabled: boolean(
       regionalCombat.enabled,
       DEFAULT_REGIONAL_COMBAT.enabled
     )
   };
-  config.settings = { ...config.settings, ...(source.settings || {}) };
-  for (const key of Object.keys(DEFAULT_SETTINGS)) {
-    config.settings[key] = typeof DEFAULT_SETTINGS[key] === "boolean"
-      ? boolean(config.settings[key], DEFAULT_SETTINGS[key])
-      : finite(config.settings[key], DEFAULT_SETTINGS[key]);
+  config.settings = { ...config.settings, ...(isPlainObject(source.settings) ? source.settings : {}) } as RuntimeSettingsValue;
+  for (const key of Object.keys(DEFAULT_SETTINGS) as Array<keyof RuntimeSettingsValue>) {
+    const fallback = DEFAULT_SETTINGS[key];
+    (config.settings as unknown as Record<string, boolean | number>)[key] = typeof fallback === "boolean"
+      ? boolean(config.settings[key], fallback)
+      : finite(config.settings[key], fallback);
   }
   config.messages = normalizeMessages(source.messages, DEFAULT_MESSAGES, true);
   config.modes = Array.isArray(source.modes) ? source.modes.map(normalizeMode) : [];
@@ -498,7 +514,7 @@ export function hydrateConfig(value) {
   config.regions = Array.isArray(source.regions)
     ? source.regions.map(normalizeRegion)
     : [];
-  const attachMode = (area) => Object.defineProperty(area, "_modeDefinition", {
+  const attachMode = (area: AreaValue) => Object.defineProperty(area, "_modeDefinition", {
     value: modeDefinition(area.mode, config),
     configurable: true,
     writable: true
@@ -508,27 +524,27 @@ export function hydrateConfig(value) {
   return config;
 }
 
-export function modeActions() {
+export function modeActions(): Record<string, ActionValue | undefined> {
   return Object.fromEntries(
     ACTIONS.map((action) => [action.id, action.fastTravelPolicy ? "all" : true])
-  );
+  ) as Record<string, ActionValue | undefined>;
 }
 
-export function effectiveActions(area) {
-  return { ...(area?._modeDefinition?.actions || modeActions(area?.mode)), ...(area?.actions || {}) };
+export function effectiveActions(area: AreaValue): Record<string, ActionValue | undefined> {
+  return { ...(area?._modeDefinition?.actions || modeActions()), ...(area?.actions || {}) };
 }
 
-export function effectiveMinimumLevel(area, config) {
+export function effectiveMinimumLevel(area: Pick<AreaValue, "mode"> & Partial<Pick<RegionValue, "minimumLevel">> & Partial<Pick<AreaValue, "_modeDefinition">>, config: PalLawConfigValue): number | null {
   return area?.minimumLevel ?? area?._modeDefinition?.minimumLevel ?? modeDefinition(area?.mode, config)?.minimumLevel ?? null;
 }
 
-export function modeCombat(mode) {
+export function modeCombat(mode: string): CombatMatrix {
   const matrix = Object.fromEntries(
     ACTORS.filter((actor) => !actor.targetOnly).map((source) => [
       source.id,
       Object.fromEntries(ACTORS.map((target) => [target.id, true]))
     ])
-  );
+  ) as CombatMatrix;
   const ownedSources = ["player", "partnerPal", "basePal", "baseStructure"];
   const ownedTargets = ["player", "partnerPal", "basePal", "baseStructure"];
   if (mode === "pve" || mode === "safe") {
@@ -547,17 +563,17 @@ export function modeCombat(mode) {
   return matrix;
 }
 
-function resolveCombat(area) {
+function resolveCombat(area: AreaValue): { preset: CombatMatrix; matrix: CombatMatrix; overridden: CombatMatrix } {
   const preset = area?._modeDefinition?.combat || modeCombat(area?.mode || "pve");
   const matrix = Object.fromEntries(
     Object.entries(preset).map(([source, targets]) => [source, { ...targets }])
-  );
+  ) as CombatMatrix;
   const overridden = Object.fromEntries(
     Object.entries(preset).map(([source, targets]) => [
       source,
       Object.fromEntries(Object.keys(targets).map((target) => [target, false]))
     ])
-  );
+  ) as CombatMatrix;
   for (const entry of area?.combat || []) {
     const sources = normalizeSelection(entry.source);
     const targets = normalizeSelection(entry.target);
@@ -578,18 +594,18 @@ function resolveCombat(area) {
   return { preset, matrix, overridden };
 }
 
-export function effectiveCombat(area) {
+export function effectiveCombat(area: AreaValue): CombatMatrix {
   return resolveCombat(area).matrix;
 }
 
-export function quickCombatOverride(area, source, target) {
+export function quickCombatOverride(area: AreaValue, source: string, target: string): CombatOverride {
   const resolution = resolveCombat(area);
   if (!resolution.matrix[source] || !Object.hasOwn(resolution.matrix[source], target)) return "default";
   if (!resolution.overridden[source][target]) return "default";
   return resolution.matrix[source][target] ? "allow" : "deny";
 }
 
-export function setQuickCombatOverride(area, source, target, value) {
+export function setQuickCombatOverride(area: AreaValue, source: string, target: string, value: CombatOverride): void {
   if (!area || typeof area !== "object" || Array.isArray(area)) {
     throw new TypeError("A combat area is required.");
   }
@@ -618,7 +634,7 @@ export function setQuickCombatOverride(area, source, target, value) {
   );
 }
 
-export function deriveFeatureSummary(input) {
+export function deriveFeatureSummary(input: unknown) {
   const config = hydrateConfig(input);
   const areas = [config.wilderness, ...config.regions.filter((region) => region.enabled !== false)];
   const owned = new Set(["player", "partnerPal", "basePal", "baseStructure"]);
@@ -639,7 +655,7 @@ export function deriveFeatureSummary(input) {
           continue;
         }
         characterPolicyNonVanilla ||= !allowed;
-        enablesRegionalPlayerDamage ||= owned.has(source) && owned.has(target) && allowed;
+        enablesRegionalPlayerDamage ||= owned.has(source) && owned.has(target) && allowed === true;
       }
     }
     const actions = effectiveActions(area);
@@ -678,22 +694,22 @@ export function deriveFeatureSummary(input) {
   });
 }
 
-export function resolveAreaMessages(config, area) {
+export function resolveAreaMessages(config: PalLawConfigValue, area: Pick<AreaValue, "mode" | "messages">): GlobalMessages {
   const global = normalizeMessages(config?.messages, DEFAULT_MESSAGES, true);
   const withMode = normalizeMessages(modeDefinition(area?.mode, config)?.messages, global, false);
   return normalizeMessages(area?.messages, withMode, false);
 }
 
-export function samePoint(a, b) {
+export function samePoint(a: Point | undefined, b: Point | undefined): boolean {
   return Math.abs(Number(a?.[0]) - Number(b?.[0])) <= EPSILON &&
     Math.abs(Number(a?.[1]) - Number(b?.[1])) <= EPSILON;
 }
 
-function cross(a, b, c) {
+function cross(a: Point, b: Point, c: Point): number {
   return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
 }
 
-function onSegment(a, b, point) {
+function onSegment(a: Point, b: Point, point: Point): boolean {
   return Math.abs(cross(a, b, point)) <= EPSILON &&
     point[0] >= Math.min(a[0], b[0]) - EPSILON &&
     point[0] <= Math.max(a[0], b[0]) + EPSILON &&
@@ -701,7 +717,7 @@ function onSegment(a, b, point) {
     point[1] <= Math.max(a[1], b[1]) + EPSILON;
 }
 
-function segmentsIntersect(a, b, c, d) {
+function segmentsIntersect(a: Point, b: Point, c: Point, d: Point): boolean {
   const abC = cross(a, b, c);
   const abD = cross(a, b, d);
   const cdA = cross(c, d, a);
@@ -711,7 +727,7 @@ function segmentsIntersect(a, b, c, d) {
   return proper || onSegment(a, b, c) || onSegment(a, b, d) || onSegment(c, d, a) || onSegment(c, d, b);
 }
 
-export function polygonSelfIntersects(polygon) {
+export function polygonSelfIntersects(polygon: readonly Point[]): boolean {
   if (!Array.isArray(polygon) || polygon.length < 4) return false;
   for (let first = 0; first < polygon.length; first += 1) {
     const firstNext = (first + 1) % polygon.length;
@@ -724,7 +740,7 @@ export function polygonSelfIntersects(polygon) {
   return false;
 }
 
-export function polygonArea(polygon) {
+export function polygonArea(polygon: readonly Point[]): number {
   if (!Array.isArray(polygon) || polygon.length < 3) return 0;
   let twiceArea = 0;
   for (let index = 0; index < polygon.length; index += 1) {
@@ -735,7 +751,7 @@ export function polygonArea(polygon) {
   return Math.abs(twiceArea) / 2;
 }
 
-export function pointInPolygon(polygon, point) {
+export function pointInPolygon(polygon: readonly Point[], point: Point): boolean {
   if (!Array.isArray(polygon) || polygon.length < 3) return false;
   let inside = false;
   for (let current = 0, previous = polygon.length - 1; current < polygon.length; previous = current++) {
@@ -749,8 +765,8 @@ export function pointInPolygon(polygon, point) {
   return inside;
 }
 
-export function areaAt(config, point) {
-  let result = { ...config.wilderness, isWilderness: true, index: -1 };
+export function areaAt(config: PalLawConfigValue, point: Point): AreaValue & { isWilderness: boolean; index: number; minimumLevel: number | null } {
+  let result: AreaValue & { isWilderness: boolean; index: number } = { ...config.wilderness, isWilderness: true, index: -1 };
   config.regions.forEach((region, index) => {
     if (region.enabled !== false && pointInPolygon(region.polygon, point)) {
       result = { ...region, isWilderness: false, index };
@@ -759,7 +775,7 @@ export function areaAt(config, point) {
   return { ...result, minimumLevel: effectiveMinimumLevel(result, config) };
 }
 
-export function evaluateCombat(config, sourceKind, targetKind, targetPoint) {
+export function evaluateCombat(config: PalLawConfigValue, sourceKind: string, targetKind: string, targetPoint: Point) {
   const targetArea = areaAt(config, targetPoint);
   const targetMatrix = effectiveCombat(targetArea);
   const allowed = targetMatrix[sourceKind]?.[targetKind] ?? false;
@@ -769,7 +785,7 @@ export function evaluateCombat(config, sourceKind, targetKind, targetPoint) {
   };
 }
 
-function validateMessage(message, context, errors) {
+function validateMessage(message: EventMessage, context: string, errors: ErrorSink): void {
   if (!message || typeof message !== "object") return;
   if (!Number.isFinite(Number(message.cooldownSeconds)) || message.cooldownSeconds < 0 || message.cooldownSeconds > 300) {
     errors.push(`${context}.cooldownSeconds must be between 0 and 300.`);
@@ -779,7 +795,7 @@ function validateMessage(message, context, errors) {
   }
   for (const { id } of ALERT_PRESENTATIONS) {
     const alert = message.alerts?.[id];
-    if (id === "brief" && alert && !ALERT_TONE_IDS.has(alert.tone)) {
+    if (id === "brief" && alert && (typeof alert.tone !== "string" || !ALERT_TONE_IDS.has(alert.tone))) {
       errors.push(`${context}.alerts.brief.tone must be normal or negative.`);
     }
     if (id === "activity" && Object.hasOwn(alert || {}, "tone")) {
@@ -791,39 +807,40 @@ function validateMessage(message, context, errors) {
   }
 }
 
-function validateCombat(entries, context, errors) {
+function validateCombat(entries: unknown, context: string, errors: ErrorSink): void {
   if (!Array.isArray(entries)) {
     errors.push(`${context} must be an array.`);
     return;
   }
   entries.forEach((entry, index) => {
+    const source = isPlainObject(entry) ? entry : {};
     const prefix = `${context}[${index}]`;
-    const sources = normalizeSelection(entry?.source);
-    const targets = normalizeSelection(entry?.target);
+    const sources = normalizeSelection(source.source);
+    const targets = normalizeSelection(source.target);
     if (!sources.length || sources.some((actor) => !SOURCE_ACTOR_IDS.has(actor))) errors.push(`${prefix}.source contains an unknown source actor.`);
     if (!targets.length || targets.some((actor) => !ACTOR_IDS.has(actor))) errors.push(`${prefix}.target contains an unknown target actor.`);
-    if (typeof entry?.allow !== "boolean") {
+    if (typeof source.allow !== "boolean") {
       errors.push(`${prefix}.allow must be true or false.`);
     }
   });
 }
 
-function boundingBox(polygon) {
+function boundingBox(polygon: readonly Point[]): Box {
   return polygon.reduce((box, [x, y]) => ({
     minX: Math.min(box.minX, x), maxX: Math.max(box.maxX, x),
     minY: Math.min(box.minY, y), maxY: Math.max(box.maxY, y)
   }), { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity });
 }
 
-function boxesOverlap(a, b) {
+function boxesOverlap(a: Box, b: Box): boolean {
   return a.minX <= b.maxX && a.maxX >= b.minX && a.minY <= b.maxY && a.maxY >= b.minY;
 }
 
-function isPlainObject(value) {
+function isPlainObject(value: unknown): value is JsonRecord {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function rejectUnknownKeys(value, allowed, context, errors) {
+function rejectUnknownKeys(value: unknown, allowed: ReadonlySet<string>, context: string, errors: ErrorSink): value is JsonRecord {
   if (!isPlainObject(value)) {
     errors.push(`${context} must be an object.`);
     return false;
@@ -834,29 +851,29 @@ function rejectUnknownKeys(value, allowed, context, errors) {
   return true;
 }
 
-function validateRawChannel(value, context, errors, allowTone = false) {
+function validateRawChannel(value: unknown, context: string, errors: ErrorSink, allowTone = false): void {
   if (typeof value === "boolean" || typeof value === "string") return;
   if (!rejectUnknownKeys(value, new Set(allowTone ? ["enabled", "text", "tone"] : ["enabled", "text"]), context, errors)) return;
-  if (allowTone && Object.hasOwn(value, "tone") && !ALERT_TONE_IDS.has(value.tone)) {
+  if (allowTone && Object.hasOwn(value, "tone") && (typeof value.tone !== "string" || !ALERT_TONE_IDS.has(value.tone))) {
     errors.push(`${context}.tone must be normal or negative.`);
   }
 }
 
-function validateRawAlerts(value, context, errors) {
+function validateRawAlerts(value: unknown, context: string, errors: ErrorSink): void {
   if (!rejectUnknownKeys(value, ALERT_PRESENTATION_IDS, context, errors)) return;
   for (const { id } of ALERT_PRESENTATIONS) {
     if (Object.hasOwn(value, id)) validateRawChannel(value[id], `${context}.${id}`, errors, id === "brief");
   }
 }
 
-function validateRawMessage(value, context, errors) {
+function validateRawMessage(value: unknown, context: string, errors: ErrorSink): void {
   if (typeof value === "boolean") return;
   if (!rejectUnknownKeys(value, new Set(["enabled", "cooldownSeconds", "chat", "alerts"]), context, errors)) return;
   if (Object.hasOwn(value, "chat")) validateRawChannel(value.chat, `${context}.chat`, errors);
   if (Object.hasOwn(value, "alerts")) validateRawAlerts(value.alerts, `${context}.alerts`, errors);
 }
 
-function validateRawMessages(value, context, global, errors) {
+function validateRawMessages(value: unknown, context: string, global: boolean, errors: ErrorSink): void {
   const allowed = new Set(MESSAGE_EVENTS.map((event) => event.id));
   if (global) {
     allowed.add("enabled");
@@ -871,7 +888,7 @@ function validateRawMessages(value, context, global, errors) {
   }
 }
 
-function validateRawDisplayNames(value, defaults, context, errors) {
+function validateRawDisplayNames(value: unknown, defaults: Readonly<Record<string, string>>, context: string, errors: ErrorSink): void {
   if (!rejectUnknownKeys(value, new Set(Object.keys(defaults)), context, errors)) return;
   for (const [key, entry] of Object.entries(value)) {
     if (typeof entry !== "string") {
@@ -885,12 +902,12 @@ function validateRawDisplayNames(value, defaults, context, errors) {
   }
 }
 
-function validateRawActions(value, context, errors) {
+function validateRawActions(value: unknown, context: string, errors: ErrorSink): void {
   const allowed = new Set(ACTIONS.map((action) => action.id));
   if (!rejectUnknownKeys(value, allowed, context, errors)) return;
   for (const [key, entry] of Object.entries(value)) {
     if (key === "fastTravelDeparture" || key === "fastTravelArrival") {
-      if (!FAST_TRAVEL_POLICY_IDS.has(entry)) {
+      if (typeof entry !== "string" || !FAST_TRAVEL_POLICY_IDS.has(entry)) {
         errors.push(`${context}.${key} must be all, baseOnly, or none.`);
       }
     } else if (typeof entry !== "boolean") {
@@ -899,7 +916,7 @@ function validateRawActions(value, context, errors) {
   }
 }
 
-function validateRawCombat(value, context, errors) {
+function validateRawCombat(value: unknown, context: string, errors: ErrorSink): void {
   if (!Array.isArray(value)) {
     errors.push(`${context} must be an array.`);
     return;
@@ -920,7 +937,7 @@ function validateRawCombat(value, context, errors) {
   });
 }
 
-function validateRawArea(value, context, region, errors) {
+function validateRawArea(value: unknown, context: string, region: boolean, errors: ErrorSink): void {
   const allowed = new Set(["name", "mode", "actions", "combat", "messages"]);
   if (region) {
     for (const key of ["enabled", "minimumLevel", "map", "polygon"]) allowed.add(key);
@@ -934,7 +951,7 @@ function validateRawArea(value, context, region, errors) {
   if (region && !Object.hasOwn(value, "polygon")) errors.push(`${context}.polygon is required.`);
 }
 
-function validateRawMode(value, index, errors) {
+function validateRawMode(value: unknown, index: number, errors: ErrorSink): void {
   const context = `modes[${index}]`;
   if (!rejectUnknownKeys(value, new Set(["id", "name", "color", "minimumLevel", "actions", "combat", "messages"]), context, errors)) return;
   for (const key of ["id", "name", "color", "minimumLevel", "actions", "combat"]) {
@@ -942,13 +959,14 @@ function validateRawMode(value, index, errors) {
   }
   if (Object.hasOwn(value, "minimumLevel") &&
       value.minimumLevel !== null &&
-      (!Number.isInteger(value.minimumLevel) || value.minimumLevel < 1 || value.minimumLevel > 999)) {
+      (typeof value.minimumLevel !== "number" || !Number.isInteger(value.minimumLevel) || value.minimumLevel < 1 || value.minimumLevel > 999)) {
     errors.push(`${context}.minimumLevel must be null or an integer between 1 and 999.`);
   }
   if (Object.hasOwn(value, "actions")) {
     validateRawActions(value.actions, `${context}.actions`, errors);
+    const actions = value.actions;
     for (const action of ACTIONS) {
-      if (!Object.hasOwn(value.actions, action.id)) errors.push(`${context}.actions.${action.id} is required.`);
+      if (!isPlainObject(actions) || !Object.hasOwn(actions, action.id)) errors.push(`${context}.actions.${action.id} is required.`);
     }
   }
   if (Object.hasOwn(value, "combat")) {
@@ -972,7 +990,7 @@ function validateRawMode(value, index, errors) {
   if (Object.hasOwn(value, "messages")) validateRawMessages(value.messages, `${context}.messages`, false, errors);
 }
 
-function validateRawRegionalCombat(value, errors) {
+function validateRawRegionalCombat(value: unknown, errors: ErrorSink): void {
   if (!rejectUnknownKeys(
     value,
     new Set(["enabled"]),
@@ -985,7 +1003,7 @@ function validateRawRegionalCombat(value, errors) {
   }
 }
 
-function validateRawConfig(input, errors) {
+function validateRawConfig(input: unknown, errors: ErrorSink): void {
   if (!rejectUnknownKeys(input, new Set(["$schema", "version", "regionalCombat", "settings", "messages", "modes", "wilderness", "regions"]), "root", errors)) return;
   if (!Object.hasOwn(input, "version")) errors.push("version is required.");
   if (!Object.hasOwn(input, "modes")) errors.push("modes is required.");
@@ -1009,21 +1027,21 @@ function validateRawConfig(input, errors) {
   }
 }
 
-export function validateConfig(input) {
+export function validateConfig(input: unknown) {
   const errorSink = createBoundedErrorSink();
   const errors = errorSink;
-  const warnings = [];
+  const warnings: string[] = [];
   try {
     validateRawConfigurationLimits(input);
   } catch (error) {
-    errors.push(error.message);
+    errors.push(error instanceof Error ? error.message : String(error));
   }
   validateRawConfig(input, errors);
   const config = hydrateConfig(input);
   if (Number(config.version) !== CONFIG_VERSION) errors.push(`version must be ${CONFIG_VERSION}.`);
   if (config.modes.length < 1 || config.modes.length > 128) errors.push("modes must contain between 1 and 128 entries.");
-  const modeIds = new Set();
-  const modeNames = new Set();
+  const modeIds = new Set<string>();
+  const modeNames = new Set<string>();
   config.modes.forEach((mode, index) => {
     const prefix = `modes[${index}]`;
     if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(mode.id)) errors.push(`${prefix}.id must use lowercase slug syntax.`);
@@ -1069,14 +1087,14 @@ export function validateConfig(input) {
   });
 
   const globalMessages = normalizeMessages(config.messages, DEFAULT_MESSAGES, true);
-  for (const event of MESSAGE_EVENTS) validateMessage(globalMessages[event.id], `messages.${event.id}`, errors);
+  for (const event of MESSAGE_EVENTS) validateMessage(messageFor(globalMessages, event.id), `messages.${event.id}`, errors);
   config.regions.forEach((region, index) => {
     const resolved = resolveAreaMessages(config, region);
-    for (const event of MESSAGE_EVENTS) validateMessage(resolved[event.id], `regions[${index}].messages.${event.id}`, errors);
+    for (const event of MESSAGE_EVENTS) validateMessage(messageFor(resolved, event.id), `regions[${index}].messages.${event.id}`, errors);
   });
   config.modes.forEach((mode, index) => {
     const resolved = resolveAreaMessages(config, { mode: mode.id, messages: {} });
-    for (const event of MESSAGE_EVENTS) validateMessage(resolved[event.id], `modes[${index}].messages.${event.id}`, errors);
+    for (const event of MESSAGE_EVENTS) validateMessage(messageFor(resolved, event.id), `modes[${index}].messages.${event.id}`, errors);
   });
 
   const enabled = config.regions
@@ -1109,14 +1127,14 @@ export function validateConfig(input) {
   };
 }
 
-function compactMessage(message, defaults) {
-  const result = {};
+function compactMessage(message: EventMessage, defaults: EventMessage): JsonRecord {
+  const result: JsonRecord = {};
   if (message.enabled !== defaults.enabled) result.enabled = message.enabled;
   if (message.cooldownSeconds !== defaults.cooldownSeconds) result.cooldownSeconds = message.cooldownSeconds;
   if (message.chat.enabled !== defaults.chat.enabled || message.chat.text !== defaults.chat.text) {
     result.chat = { enabled: message.chat.enabled, text: message.chat.text };
   }
-  const alerts = {};
+  const alerts: JsonRecord = {};
   for (const { id } of ALERT_PRESENTATIONS) {
     if (message.alerts[id].enabled !== defaults.alerts[id].enabled ||
         message.alerts[id].text !== defaults.alerts[id].text ||
@@ -1132,28 +1150,28 @@ function compactMessage(message, defaults) {
   return result;
 }
 
-function compactMessages(messages, defaults, includeGlobalControls) {
-  const result = {};
+function compactMessages(messages: GlobalMessages, defaults: Readonly<GlobalMessages>, includeGlobalControls: boolean): JsonRecord {
+  const result: JsonRecord = {};
   if (includeGlobalControls) {
     result.enabled = messages.enabled;
     const actionNames = compactDisplayNames(messages.actionNames, DEFAULT_ACTION_NAMES);
     if (Object.keys(actionNames).length) result.actionNames = actionNames;
   }
   for (const event of MESSAGE_EVENTS) {
-    const compact = compactMessage(messages[event.id], defaults[event.id]);
+    const compact = compactMessage(messageFor(messages, event.id), messageFor(defaults as GlobalMessages, event.id));
     if (Object.keys(compact).length) result[event.id] = compact;
   }
   return result;
 }
 
-function compactDisplayNames(names, defaults) {
+function compactDisplayNames(names: Readonly<Record<string, string>>, defaults: Readonly<Record<string, string>>): Record<string, string> {
   return Object.fromEntries(Object.keys(defaults)
     .filter((key) => names?.[key] !== defaults[key])
     .map((key) => [key, names[key]]));
 }
 
-function compactArea(area, globalMessages) {
-  const result = { name: area.name, mode: area.mode };
+function compactArea(area: AreaValue, globalMessages: GlobalMessages): JsonRecord {
+  const result: JsonRecord = { name: area.name, mode: area.mode };
   if (Object.keys(area.actions || {}).length) result.actions = clone(area.actions);
   if ((area.combat || []).length) result.combat = clone(area.combat);
   const resolved = normalizeMessages(area.messages, globalMessages, false);
@@ -1162,7 +1180,7 @@ function compactArea(area, globalMessages) {
   return result;
 }
 
-export function serializeConfig(input) {
+export function serializeConfig(input: unknown): JsonRecord {
   const config = hydrateConfig(input);
   const result = {
     $schema: `./${SCHEMA_FILE_NAME}`,
@@ -1194,15 +1212,15 @@ export function serializeConfig(input) {
   return result;
 }
 
-export function stringifyConfig(input) {
+export function stringifyConfig(input: unknown): string {
   return `${JSON.stringify(serializeConfig(input), null, 2)}\n`;
 }
 
-function currentMigrationRegistry() {
-  const migrateCombat = (area, path, report) => {
-    if (!area || !Array.isArray(area.combat)) return;
+function currentMigrationRegistry(): MigrationDefinition[] {
+  const migrateCombat = (area: unknown, path: string, report: MigrationReportEntry[]) => {
+    if (!isPlainObject(area) || !Array.isArray(area.combat)) return;
     area.combat.forEach((entry, index) => {
-      if (!entry || typeof entry !== "object" || Array.isArray(entry) ||
+      if (!isPlainObject(entry) ||
           !Object.hasOwn(entry, "damage")) {
         return;
       }
@@ -1223,9 +1241,9 @@ function currentMigrationRegistry() {
       });
     });
   };
-  const migrateV1ToV2 = (document, report) => {
+  const migrateV1ToV2 = (document: JsonObject, report: MigrationReportEntry[]) => {
     document.regionalCombat = clone(DEFAULT_REGIONAL_COMBAT);
-    if (document.settings && typeof document.settings === "object") {
+    if (isPlainObject(document.settings)) {
       delete document.settings.targetFiltering;
       delete document.settings.targetSweepSeconds;
     }
@@ -1242,7 +1260,7 @@ function currentMigrationRegistry() {
       });
     }
   };
-  const migrateV2ToV3 = (document, report = []) => {
+  const migrateV2ToV3 = (document: JsonObject, report: MigrationReportEntry[] = []) => {
     const oldRegionChanged = {
       enabled: true,
       cooldownSeconds: 0,
@@ -1256,13 +1274,13 @@ function currentMigrationRegistry() {
       alerts: defaultAlerts("PVP ENABLED - {region}", "brief", "negative")
     };
     const globalMessages = isPlainObject(document.messages) ? document.messages : {};
-    const legacyErrors = [];
+    const legacyErrors: string[] = [];
     if (Object.hasOwn(globalMessages, "pvpWarning")) {
       validateRawMessage(globalMessages.pvpWarning, "messages.pvpWarning", legacyErrors);
     }
-    const validateLegacyArea = (area, path) => {
+    const validateLegacyArea = (area: unknown, path: string) => {
       if (!isPlainObject(area)) return;
-      if (Object.hasOwn(area, "color") && !/^#[0-9a-f]{6}$/i.test(area.color)) {
+      if (Object.hasOwn(area, "color") && (typeof area.color !== "string" || !/^#[0-9a-f]{6}$/i.test(area.color))) {
         legacyErrors.push(`${path}.color must use #RRGGBB.`);
       }
       if (isPlainObject(area.messages) && Object.hasOwn(area.messages, "pvpWarning")) {
@@ -1276,10 +1294,10 @@ function currentMigrationRegistry() {
     if (legacyErrors.length) throw new Error(legacyErrors.join("\n"));
     const effectiveGlobalRegion = normalizeMessage(globalMessages.regionChanged, oldRegionChanged);
     const effectiveGlobalWarning = normalizeMessage(globalMessages.pvpWarning, oldPvpWarning);
-    const mergeWarning = (base, warning, path) => {
+    const mergeWarning = (base: EventMessage, warning: EventMessage, path: string): EventMessage => {
       const result = clone(base);
       let migrated = false;
-      const replace = (channelPath, current, incoming) => {
+      const replace = <T extends { enabled: boolean }>(channelPath: string, current: T, incoming: T): T => {
         if (!warning.enabled || !incoming.enabled) return current;
         if (base.enabled && current.enabled) {
           addMigrationFallback(report, {
@@ -1294,7 +1312,7 @@ function currentMigrationRegistry() {
       };
       result.chat = replace("chat", result.chat, warning.chat);
       for (const { id } of ALERT_PRESENTATIONS) {
-        result.alerts[id] = replace(`alerts.${id}`, result.alerts[id], warning.alerts[id]);
+      result.alerts[id] = replace<AlertMessage>(`alerts.${id}`, result.alerts[id]!, warning.alerts[id]!);
       }
       if (migrated) result.cooldownSeconds = warning.cooldownSeconds;
       return result;
@@ -1306,10 +1324,11 @@ function currentMigrationRegistry() {
       }
     }
     document.modes = STARTER_MODES.map((starter) => {
+      const localizedName = localizedNames[starter.id];
       const mode = createStarterMode({
         ...starter,
-        name: typeof localizedNames[starter.id] === "string"
-          ? localizedNames[starter.id]
+        name: typeof localizedName === "string"
+          ? localizedName
           : starter.name
       });
       if (starter.id === "pvp") {
@@ -1339,16 +1358,17 @@ function currentMigrationRegistry() {
         message: "PvP warning outputs moved to pvp.messages.regionChanged."
       });
     }
-    const migrateArea = (area, path) => {
+    const migrateArea = (area: unknown, path: string) => {
       if (!isPlainObject(area)) return;
       if (!Object.hasOwn(area, "mode")) area.mode = "pve";
       const actions = area?.actions;
       for (const key of ["fastTravelDeparture", "fastTravelArrival"]) {
         if (!isPlainObject(actions) || !Object.hasOwn(actions, key)) continue;
-        if (typeof actions[key] !== "boolean") {
+        const current = actions[key];
+        if (typeof current !== "boolean") {
           throw new Error(`${path}.actions.${key} must be true or false.`);
         }
-        actions[key] = actions[key] ? "all" : "none";
+        actions[key] = current ? "all" : "none";
       }
       if (Object.hasOwn(area, "color")) {
         delete area.color;
@@ -1422,7 +1442,7 @@ function currentMigrationRegistry() {
   ];
 }
 
-export function migrateConfig(input) {
+export function migrateConfig(input: unknown) {
   const registry = currentMigrationRegistry();
   if (registry.length !== CONFIG_VERSION) {
     throw new Error(
@@ -1432,7 +1452,7 @@ export function migrateConfig(input) {
   return migrateConfiguration(input, registry);
 }
 
-function parseConfigWithMigration(source) {
+function parseConfigWithMigration(source: ConfigSource) {
   const migration = migrateConfig(parseConfigSource(source));
   const validation = validateConfig(migration.document);
   if (!validation.valid) throw new Error(validation.errors.join("\n"));
@@ -1442,23 +1462,23 @@ function parseConfigWithMigration(source) {
   };
 }
 
-export function parseConfigTextWithMigration(textValue) {
+export function parseConfigTextWithMigration(textValue: string) {
   return parseConfigWithMigration(textValue);
 }
 
-export function parseConfigBytesWithMigration(bytes) {
+export function parseConfigBytesWithMigration(bytes: ArrayBuffer | ArrayBufferView) {
   return parseConfigWithMigration(bytes);
 }
 
-export function parseConfigText(textValue) {
+export function parseConfigText(textValue: string): PalLawConfigValue {
   return parseConfigTextWithMigration(textValue).config;
 }
 
-export function parseConfigBytes(bytes) {
+export function parseConfigBytes(bytes: ArrayBuffer | ArrayBufferView): PalLawConfigValue {
   return parseConfigBytesWithMigration(bytes).config;
 }
 
-export function formatTemplate(template, values = {}) {
+export function formatTemplate(template: unknown, values: Readonly<Record<string, unknown>> = {}): string {
   let result = String(template ?? "");
   for (const placeholder of ["region", "previousRegion", "mode", "action", "minimumLevel", "playerLevel"]) {
     result = result.replaceAll(`{${placeholder}}`, values[placeholder] == null ? "" : String(values[placeholder]));

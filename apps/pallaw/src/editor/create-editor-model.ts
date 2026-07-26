@@ -17,6 +17,11 @@ export interface EditorViewState<TConfig> {
   readonly selectedModeIndex: number;
   readonly regionSearch: string;
   readonly modeSearch: string;
+  readonly selectedMessageId: string;
+  readonly activeMapId: string;
+  readonly editingShape: boolean;
+  readonly areaDialogOpen: boolean;
+  readonly editingWilderness: boolean;
 }
 
 interface MutableEditorViewState<TConfig> {
@@ -27,6 +32,11 @@ interface MutableEditorViewState<TConfig> {
   selectedModeIndex: number;
   regionSearch: string;
   modeSearch: string;
+  selectedMessageId: string;
+  activeMapId: string;
+  editingShape: boolean;
+  areaDialogOpen: boolean;
+  editingWilderness: boolean;
 }
 
 export interface EditorModel<TConfig> {
@@ -37,6 +47,10 @@ export interface EditorModel<TConfig> {
   selectMode(index: number): void;
   setRegionSearch(value: string): void;
   setModeSearch(value: string): void;
+  setSelectedMessage(id: string): void;
+  setActiveMap(id: string): void;
+  setEditingShape(value: boolean): void;
+  setAreaDialog(open: boolean, wilderness?: boolean): void;
   dispose(): void;
 }
 
@@ -49,7 +63,12 @@ export function createEditorModel<TConfig extends EditorConfigurationShape>(docu
     selectedRegionIndex: initial.config.regions.length ? 0 : null,
     selectedModeIndex: 0,
     regionSearch: "",
-    modeSearch: ""
+    modeSearch: "",
+    selectedMessageId: "regionChanged",
+    activeMapId: "world",
+    editingShape: false,
+    areaDialogOpen: false,
+    editingWilderness: false
   });
 
   const unsubscribe = document.subscribe((snapshot) => {
@@ -70,6 +89,13 @@ export function createEditorModel<TConfig extends EditorConfigurationShape>(docu
     selectMode: (index: number) => { setState("selectedModeIndex", index); },
     setRegionSearch: (value: string) => { setState("regionSearch", value); },
     setModeSearch: (value: string) => { setState("modeSearch", value); },
+    setSelectedMessage: (id: string) => { setState("selectedMessageId", id); },
+    setActiveMap: (id: string) => { setState("activeMapId", id); },
+    setEditingShape: (value: boolean) => { setState("editingShape", value); },
+    setAreaDialog: (open: boolean, wilderness = false) => {
+      setState("areaDialogOpen", open);
+      setState("editingWilderness", open && wilderness);
+    },
     dispose: unsubscribe
   };
   return Object.freeze(model);

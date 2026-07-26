@@ -48,11 +48,19 @@ function clone<T>(value: T): T {
     : JSON.parse(JSON.stringify(value)) as T;
 }
 
+function deepFreeze<T>(value: T, seen = new WeakSet<object>()): T {
+  if (!value || typeof value !== "object" || seen.has(value)) return value;
+  seen.add(value);
+  for (const key of Reflect.ownKeys(value)) deepFreeze((value as Record<PropertyKey, unknown>)[key], seen);
+  return Object.freeze(value);
+}
+
 export function createEditorDocument<TConfig>(options: EditorDocumentOptions<TConfig>): EditorDocument<TConfig> {
   const historyLimit = Math.max(2, options.historyLimit ?? 80);
   const listeners = new Set<(snapshot: EditorSnapshot<TConfig>) => void>();
-  let config = options.hydrate(loadInitialValue(options));
+  let config = deepFreeze(options.hydrate(loadInitialValue(options)));
   let serialized = options.serialize(config);
+  let validation = options.validate(config);
   let history = [serialized];
   let historyIndex = 0;
   let dirty = false;
@@ -61,7 +69,7 @@ export function createEditorDocument<TConfig>(options: EditorDocumentOptions<TCo
     if (!persistence) return initialValue;
     try {
       const saved = persistence.load();
-      return saved === null ? initialValue : JSON.parse(saved) as unknown;
+      return saved === null ? initialValue : options.parse ? options.parse(saved) : JSON.parse(saved) as unknown;
     } catch {
       return initialValue;
     }
@@ -71,7 +79,7 @@ export function createEditorDocument<TConfig>(options: EditorDocumentOptions<TCo
     return Object.freeze({
       config: config as Readonly<TConfig>,
       serialized,
-      validation: options.validate(config),
+      validation,
       dirty,
       canUndo: historyIndex > 0,
       canRedo: historyIndex < history.length - 1
@@ -89,8 +97,9 @@ export function createEditorDocument<TConfig>(options: EditorDocumentOptions<TCo
   function replace(next: TConfig, markDirty: boolean, recordHistory: boolean): boolean {
     const nextSerialized = options.serialize(next);
     if (nextSerialized === serialized) return false;
-    config = next;
+    config = deepFreeze(next);
     serialized = nextSerialized;
+    validation = options.validate(config);
     dirty = markDirty;
     if (recordHistory) {
       history = history.slice(0, historyIndex + 1);
@@ -104,8 +113,9 @@ export function createEditorDocument<TConfig>(options: EditorDocumentOptions<TCo
 
   function restore(index: number): void {
     historyIndex = index;
-    config = options.hydrate(JSON.parse(history[index]!) as unknown);
+    config = deepFreeze(options.hydrate(JSON.parse(history[index]!) as unknown));
     serialized = options.serialize(config);
+    validation = options.validate(config);
     dirty = true;
     publish(true);
   }
@@ -130,8 +140,9 @@ export function createEditorDocument<TConfig>(options: EditorDocumentOptions<TCo
       }
       if (command.type === "reset") {
         const next = options.hydrate(command.value);
-        config = next;
+        config = deepFreeze(next);
         serialized = options.serialize(next);
+        validation = options.validate(config);
         history = [serialized];
         historyIndex = 0;
         dirty = false;
@@ -149,10 +160,11 @@ export function createEditorDocument<TConfig>(options: EditorDocumentOptions<TCo
           ? options.parse(source)
           : JSON.parse(typeof source === "string" ? source : new TextDecoder().decode(source)) as unknown;
         const next = options.hydrate(parsed);
-        const validation = options.validate(next);
-        if (!validation.valid) return { accepted: false, errors: validation.errors };
-        config = next;
+        const nextValidation = options.validate(next);
+        if (!nextValidation.valid) return { accepted: false, errors: nextValidation.errors };
+        config = deepFreeze(next);
         serialized = options.serialize(next);
+        validation = nextValidation;
         history = [serialized];
         historyIndex = 0;
         dirty = true;

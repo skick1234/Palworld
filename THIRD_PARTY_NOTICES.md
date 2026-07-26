@@ -31,12 +31,12 @@ These files are included for geographic editing in an unofficial fan tool. Their
 - License: MIT
 - Source and license: `https://github.com/tailwindlabs/heroicons`
 
-## Ko-fi support widget
+## Ko-fi support embed
 
-- Script: `https://storage.ko-fi.com/cdn/scripts/overlay-widget.js`
+- Frame: `https://ko-fi.com/skick/?hidefeed=true&widget=true&embed=true&preview=true`
 - Service: Ko-fi
-- Purpose: displays the optional floating support button on every web page
-- Runtime behavior: loaded from Ko-fi's CDN, may display content from `ko-fi.com`, and requests DM Sans from Google Fonts
+- Purpose: displays the optional support dialog on every web page
+- Runtime behavior: the iframe is created only after the user first opens the first-party Donate dialog, remains inside that dialog for later opens, and is hidden whenever the dialog is closed; Ko-fi may request its own hosted content and fonts inside that frame
 
 ## Rights-holder requests
 
