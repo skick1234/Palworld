@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
     paths:
+      - "apps/pallaw/**"
+      - "package.json"
+      - "bun.lock"
+      - "tsconfig.json"
+      - "vite.config.ts"
       - "site/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
@@ -26,6 +31,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Typecheck PalLaw
+        run: bun run typecheck
+      - name: Test PalLaw
+        run: bun run test:pallaw
+      - name: Build PalLaw
+        run: bun run build:pallaw
       - name: Configure Pages
         uses: actions/configure-pages@v6
       - name: Upload static site

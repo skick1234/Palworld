@@ -7,13 +7,13 @@ import {
   createBoundedErrorSink,
   parseConfigSource,
   validateRawConfigurationLimits
-} from "./config-source.js?v=6";
+} from "./config-source.js?v=7";
 import {
   addMigrationFallback,
   migrateConfiguration
-} from "./configuration-migrations.js?v=6";
+} from "./configuration-migrations.js?v=7";
 
-export { CONFIG_LIMITS, ConfigSourceError, parseConfigSource } from "./config-source.js?v=6";
+export { CONFIG_LIMITS, ConfigSourceError, parseConfigSource } from "./config-source.js?v=7";
 
 export {
   MAPS,
@@ -21,7 +21,7 @@ export {
   mapFractionToWorld,
   worldToInGameMap,
   worldToMapFraction
-} from "./map-coordinates.js?v=6";
+} from "./map-coordinates.js?v=7";
 
 export const ACTORS = [
   { id: "player", label: "Player", description: "A player character." },

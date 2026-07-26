@@ -24,9 +24,9 @@ import {
   validateConfig,
   worldToInGameMap,
   worldToMapFraction
-} from "./rules-core.js?v=6";
-import { createMessageEditor, renderControlRow, renderControlRowGroup } from "./message-editor.js?v=6";
-import { createDocumentStore } from "./document-store.js?v=6";
+} from "./rules-core.js?v=7";
+import { createMessageEditor, renderControlRow, renderControlRowGroup } from "./message-editor.js?v=7";
+import { createDocumentStore } from "./document-store.js?v=7";
 
 const STORAGE_KEY = "pallaw.studio.v1";
 

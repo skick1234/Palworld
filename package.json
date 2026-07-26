@@ -2,5 +2,23 @@
   "name": "palworld-mods-web",
   "version": "0.0.1",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build:pallaw": "vite build",
+    "test:pallaw": "vitest run apps/pallaw/tests"
+  },
+  "dependencies": {
+    "solid-js": "^1.9.14"
+  },
+  "devDependencies": {
+    "@solidjs/testing-library": "^0.8.10",
+    "@types/leaflet": "^1.9.21",
+    "@types/node": "^26.1.1",
+    "jsdom": "^29.1.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.1.5",
+    "vite-plugin-solid": "^2.11.13",
+    "vitest": "^4.1.10"
+  }
 }
