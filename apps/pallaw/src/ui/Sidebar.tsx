@@ -1,12 +1,8 @@
 import { For, Show, createMemo, createSignal } from "solid-js";
 import type { JSX } from "solid-js";
 import type { EditorSection } from "../editor/create-editor-model";
-
-export interface ModeSummary {
-  readonly id: string;
-  readonly name: string;
-  readonly color: string;
-}
+import { ModeBadge, type ModeSummary } from "./ModeBadge";
+export type { ModeSummary } from "./ModeBadge";
 
 export interface AreaSummary {
   readonly name: string;
@@ -21,15 +17,6 @@ export interface RegionSummary extends AreaSummary {
 interface IconProps { readonly name: string; }
 function Icon(props: IconProps) {
   return <span class={`hero-icon hero-icon-${props.name}`} aria-hidden="true" />;
-}
-
-function ModeBadge(props: { readonly modeId: string; readonly modes: readonly ModeSummary[] }) {
-  const definition = () => props.modes.find((mode) => mode.id === props.modeId) ?? props.modes[0];
-  return (
-    <span class="badge mode-badge" style={{ "--mode-color": definition()?.color ?? "#64748b" }}>
-      {definition()?.name ?? props.modeId}
-    </span>
-  );
 }
 
 function CardHeader(props: { readonly title: string; readonly children?: JSX.Element }) {

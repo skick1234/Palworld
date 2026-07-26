@@ -957,8 +957,53 @@ body { background: var(--bg); }
 .tab-strip button.active::after { transform: scaleX(1); }
 .tab-strip button:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 
-.region-general-grid { grid-template-columns: minmax(0, 1fr); gap: 16px; }
-.region-general-grid > .field { grid-column: 1; }
+.region-form-stack { display: grid; gap: 24px; }
+.region-form-section { min-width: 0; }
+.region-form-section + .region-form-section { padding-top: 22px; border-top: 1px solid var(--line); }
+.region-form-heading { display: grid; gap: 4px; margin-bottom: 14px; }
+.region-form-heading h3 { margin: 0; font-family: var(--font-display); font-size: 0.96rem; font-weight: 680; letter-spacing: -0.01em; }
+.region-form-heading p { max-width: 62ch; margin: 0; color: var(--faint); font-size: 0.78rem; line-height: 1.45; }
+.region-identity-grid, .region-behavior-grid { display: grid; gap: 14px; }
+.region-identity-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.region-behavior-grid { grid-template-columns: 1.1fr 0.9fr 0.9fr; align-items: start; }
+.region-editor-content .field { gap: 7px; }
+.region-editor-content .field > span { color: var(--muted); font-size: 0.78rem; font-weight: 720; letter-spacing: 0.01em; }
+.region-editor-content .field > legend { padding: 0; color: var(--muted); font-size: 0.78rem; font-weight: 720; letter-spacing: 0.01em; }
+.region-editor-content .field small { max-width: 62ch; min-height: 2.8em; color: var(--faint); font-size: 0.74rem; line-height: 1.4; }
+.region-editor-content .field input,
+.region-editor-content .field select { min-height: 46px; padding-inline: 13px; border: 1px solid var(--line); background: var(--panel-deep); }
+.region-editor-content .field input:hover,
+.region-editor-content .field select:hover { border-color: var(--line-strong); }
+.region-behavior-grid .toggle-row { min-height: 46px; margin: 0; padding: 7px 12px; border: 1px solid var(--line); border-radius: var(--control-radius); background: var(--panel-deep); }
+.region-behavior-grid .toggle-row:hover { border-color: var(--line-strong); background: var(--panel-soft); }
+.region-behavior-grid .control-row-copy strong { font-size: 0.82rem; }
+.region-behavior-grid .control-row-copy span { font-size: 0.71rem; }
+.area-mode-field { min-width: 0; margin: 0; padding: 0; border: 0; }
+.mode-choice-list { display: flex; flex-wrap: wrap; align-content: flex-start; gap: 8px; min-height: 46px; }
+.mode-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 5px 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel-deep);
+  color: var(--faint);
+  cursor: pointer;
+  transition: border-color 150ms ease, background-color 150ms ease, color 150ms ease;
+}
+.mode-choice:hover { border-color: var(--line-strong); background: var(--panel-soft); color: var(--muted); }
+.mode-choice.selected { border-color: color-mix(in srgb, var(--accent) 48%, var(--line-strong)); background: color-mix(in srgb, var(--accent) 8%, var(--panel-deep)); color: var(--text); }
+.mode-choice:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.mode-choice .mode-badge { pointer-events: none; }
+.region-polygon-heading { grid-template-columns: minmax(0, 1fr) auto; align-items: start; }
+.region-polygon-heading .badge { align-self: start; }
+.region-coordinate-field textarea { min-height: 230px; padding: 14px 16px; overflow: auto; border: 1px solid var(--line-strong); border-radius: var(--control-radius); background: var(--panel-deep); font-size: 0.8rem; line-height: 1.6; resize: vertical; tab-size: 2; }
+.region-coordinate-field textarea:hover { border-color: color-mix(in srgb, var(--accent) 35%, var(--line-strong)); }
+.region-coordinate-field small { min-height: 0 !important; }
+.region-coordinate-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.region-coordinate-actions .button { min-height: 34px; padding-inline: 14px; }
 .preview-box { border: 1px solid rgb(18 22 24 / 0.12); background: #fff; color: #171a1c; }
 .preview-box .eyebrow { color: #70402f; }
 .preview-box .preview-chat { color: #171a1c; }
@@ -1069,12 +1114,6 @@ body { background: var(--bg); }
 .region-editor-close:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .region-editor-content { min-height: 0; overflow: auto; padding: 18px 22px 28px; }
 .region-editor-context { width: 100%; margin: 0 0 14px; color: var(--muted); font-size: 0.86rem; line-height: 1.45; }
-.region-editor-content .region-general-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
-.region-editor-content .region-general-grid > .area-name-field,
-.region-editor-content .region-general-grid > .area-mode-field { grid-column: span 3; }
-.region-editor-content .region-general-grid > .region-enabled-field,
-.region-editor-content .region-general-grid > .region-map-field,
-.region-editor-content .region-general-grid > .region-level-field { grid-column: span 2; }
 .region-editor-content .mode-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .region-editor-footer { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 10px 20px; border-top: 1px solid var(--line); background: color-mix(in srgb, var(--panel) 92%, transparent); }
 .region-editor-footer p { margin: 0; color: var(--faint); font-size: 0.7rem; line-height: 1.45; }
@@ -1091,9 +1130,13 @@ body { background: var(--bg); }
   }
   .region-editor-header { padding: 14px 16px; }
   .region-editor-content { padding: 20px 16px 32px; }
-  .region-editor-content .region-general-grid,
+  .region-identity-grid,
+  .region-behavior-grid,
   .region-editor-content .mode-grid { grid-template-columns: minmax(0, 1fr); }
-  .region-editor-content .region-general-grid > .field { grid-column: 1; }
+  .region-form-stack { gap: 20px; }
+  .region-form-section + .region-form-section { padding-top: 18px; }
+  .region-editor-content .field small { min-height: 0; }
+  .region-coordinate-field textarea { min-height: 260px; }
   .region-editor-footer { align-items: center; padding: 12px 16px; }
   .combat-matrix-card .section-card-header { align-items: flex-start; }
   .matrix-header-actions { flex-direction: column; align-items: flex-end; }

@@ -1,7 +1,7 @@
 import { For, Show, createSignal } from "solid-js";
 import { MessageInspector, type MessageCollection, type MessageIntent } from "./MessageInspector";
 import { ActionsEditor, CombatMatrix, type ActionValue, type ActionValues, type CombatMatrixValue, type CombatOverride } from "./RuleEditors";
-import type { ModeSummary } from "./Sidebar";
+import { ModeBadge, type ModeSummary } from "./ModeBadge";
 import type { AreaIntent } from "../editor/intents";
 import { ControlRow } from "./ControlRow";
 export type { AreaIntent } from "../editor/intents";
@@ -53,16 +53,31 @@ export function AreaEditor(props: {
       <For each={["general", "rules", "messages"] as const}>{(id) => <button type="button" role="tab" aria-selected={tab() === id} classList={{ active: tab() === id }} onClick={() => { setTab(id); }}>{id[0]!.toUpperCase() + id.slice(1)}</button>}</For>
     </div>
     <Show when={tab() === "general"}>
-      <div class={`form-grid ${props.isRegion ? "region-general-grid" : ""}`}>
-        <label class="field area-name-field"><span>Name</span><input aria-label="Name" maxlength="96" value={props.area.name} onChange={(event) => { props.onChange({ type: "set-name", value: event.currentTarget.value.trim() }); }} /><small>Names must be unique, ignoring letter case. This value appears in messages.</small></label>
-        <label class="field area-mode-field"><span>Mode</span><select aria-label="Mode" value={props.area.mode} onChange={(event) => { props.onChange({ type: "set-mode", value: event.currentTarget.value }); }}><For each={props.modes}>{(mode) => <option value={mode.id}>{mode.name}</option>}</For></select><small>Changing mode preserves explicit overrides.</small></label>
+      <div class="region-form-stack">
+        <section class="region-form-section region-identity-section">
+          <div class="region-form-heading"><h3>Identity</h3><p>Name the area and choose the mode it inherits from.</p></div>
+          <div class="region-identity-grid">
+            <label class="field area-name-field"><span>Name</span><input aria-label="Name" maxlength="96" value={props.area.name} onChange={(event) => { props.onChange({ type: "set-name", value: event.currentTarget.value.trim() }); }} /><small>Names must be unique, ignoring letter case. This value appears in messages.</small></label>
+            <fieldset class="field area-mode-field"><legend>Mode</legend><div class="mode-choice-list" role="radiogroup" aria-label="Mode"><For each={props.modes}>{(mode) => <button type="button" role="radio" classList={{ "mode-choice": true, selected: props.area.mode === mode.id }} aria-checked={props.area.mode === mode.id} onClick={() => { props.onChange({ type: "set-mode", value: mode.id }); }}><ModeBadge modeId={mode.id} modes={props.modes} /></button>}</For></div><small>Changing mode preserves explicit overrides.</small></fieldset>
+          </div>
+        </section>
         <Show when={props.isRegion}>
-          <div class="field region-enabled-field"><span>Enabled</span><ControlRow kind="boolean" variant="standalone" label="Use this region" description="Disabled regions remain in the file." checked={props.area.enabled !== false} onChange={(value) => { props.onChange({ type: "set-enabled", value }); }} /></div>
-          <label class="field region-map-field"><span>Coordinate map</span><select aria-label="Coordinate map" value={props.area.map} onChange={(event) => { props.onChange({ type: "set-map", value: event.currentTarget.value }); }}><For each={props.maps}>{(map) => <option value={map.id}>{map.label}</option>}</For></select></label>
-          <label class="field region-level-field"><span>Minimum player level</span><input aria-label="Minimum player level" type="number" min="1" max="999" step="1" value={props.area.minimumLevel ?? ""} placeholder={props.modeMinimumLevel == null ? "Mode: no requirement" : `Mode: level ${props.modeMinimumLevel}`} onChange={(event) => { setLevel(event.currentTarget.value); }} /><small>Leave blank to use the mode setting.</small></label>
+          <section class="region-form-section region-behavior-section">
+            <div class="region-form-heading"><h3>Behavior</h3><p>Control when this region applies and which coordinate space it uses.</p></div>
+            <div class="region-behavior-grid">
+              <div class="field region-enabled-field"><span>Availability</span><ControlRow kind="boolean" variant="standalone" label="Use this region" description="Disabled regions remain in the file." checked={props.area.enabled !== false} onChange={(value) => { props.onChange({ type: "set-enabled", value }); }} /></div>
+              <label class="field region-map-field"><span>Coordinate map</span><select aria-label="Coordinate map" value={props.area.map} onChange={(event) => { props.onChange({ type: "set-map", value: event.currentTarget.value }); }}><For each={props.maps}>{(map) => <option value={map.id}>{map.label}</option>}</For></select><small>Coordinates are interpreted against this map.</small></label>
+              <label class="field region-level-field"><span>Minimum player level</span><input aria-label="Minimum player level" type="number" min="1" max="999" step="1" value={props.area.minimumLevel ?? ""} placeholder={props.modeMinimumLevel == null ? "Mode: no requirement" : `Mode: level ${props.modeMinimumLevel}`} onChange={(event) => { setLevel(event.currentTarget.value); }} /><small>Leave blank to use the mode setting.</small></label>
+            </div>
+          </section>
+          <section class="region-form-section region-polygon-section">
+            <div class="region-form-heading region-polygon-heading"><div><h3>Polygon</h3><p>Edit the server coordinates or fit them directly from the map.</p></div><span class="badge">{props.area.polygon?.length ?? 0} vertices</span></div>
+            <label class="field region-coordinate-field"><span>Runtime world coordinates</span><textarea aria-label="Runtime world coordinates" class="mono" rows="10" spellcheck={false} value={polygonText()} onInput={(event) => { setPolygonText(event.currentTarget.value); setPolygonError(""); }} /><small>Each point is an Unreal-world [X, Y] pair used by the server.</small></label>
+            <Show when={polygonError()}><p class="help combat-inactive" role="alert">{polygonError()}</p></Show>
+            <div class="region-coordinate-actions"><button type="button" class="button small primary" onClick={applyPolygon}>Apply coordinates</button><button type="button" class="button small ghost" onClick={() => { props.onChange({ type: "fit-region" }); }}>Fit region</button></div>
+          </section>
         </Show>
       </div>
-      <Show when={props.isRegion}><div class="section-card"><div class="section-card-header"><h3>Polygon</h3><span class="badge">{props.area.polygon?.length ?? 0} vertices</span></div><div class="section-card-body"><label class="field"><span>Runtime world coordinates</span><textarea aria-label="Runtime world coordinates" class="mono" spellcheck={false} value={polygonText()} onInput={(event) => { setPolygonText(event.currentTarget.value); setPolygonError(""); }} /><small>Each point is an Unreal-world [X, Y] pair used by the server.</small></label><Show when={polygonError()}><p class="help combat-inactive" role="alert">{polygonError()}</p></Show><div class="code-actions"><button type="button" class="button small ghost" onClick={applyPolygon}>Apply coordinates</button><button type="button" class="button small ghost" onClick={() => { props.onChange({ type: "fit-region" }); }}>Fit region</button></div></div></div></Show>
     </Show>
     <Show when={tab() === "rules"}>
       <div class="rules-stack">
