@@ -4,6 +4,16 @@ import { AreaEditor } from "../src/ui/AreaEditor";
 
 describe("AreaEditor", () => {
   afterEach(cleanup);
+
+  test("reports a region availability change", async () => {
+    const change = vi.fn();
+    const area = { name: "North", mode: "safe", enabled: true, map: "world", minimumLevel: null, polygon: [[0, 0], [10, 0], [0, 10]] as [number, number][], actions: {}, combat: [], messages: {} };
+    render(() => <AreaEditor area={area} isRegion={true} modes={[{ id: "safe", name: "Safe", color: "#22C55E" }]} maps={[{ id: "world", label: "World" }]} effectiveActions={{}} effectiveCombat={{}} modeName="Safe" messages={{ enabled: true, actionNames: {} }} resolvedMessages={{}} overrideFor={() => "default"} onChange={change} />);
+
+    await fireEvent.click(screen.getByLabelText("Use this region"));
+    expect(change).toHaveBeenCalledWith({ type: "set-enabled", value: false });
+  });
+
   test("reports a region name change without mutating its input", async () => {
     const change = vi.fn();
     const area = { name: "North", mode: "safe", enabled: true, map: "world", minimumLevel: null, polygon: [[0, 0], [10, 0], [0, 10]] as [number, number][], actions: {}, combat: [], messages: {} };

@@ -3,6 +3,7 @@ import { MessageInspector, type MessageCollection, type MessageIntent } from "./
 import { ActionsEditor, CombatMatrix, type ActionValue, type ActionValues, type CombatMatrixValue, type CombatOverride } from "./RuleEditors";
 import type { ModeSummary } from "./Sidebar";
 import type { AreaIntent } from "../editor/intents";
+import { ControlRow } from "./ControlRow";
 export type { AreaIntent } from "../editor/intents";
 
 export interface AreaEditorValue {
@@ -56,7 +57,7 @@ export function AreaEditor(props: {
         <label class="field area-name-field"><span>Name</span><input aria-label="Name" maxlength="96" value={props.area.name} onChange={(event) => { props.onChange({ type: "set-name", value: event.currentTarget.value.trim() }); }} /><small>Names must be unique, ignoring letter case. This value appears in messages.</small></label>
         <label class="field area-mode-field"><span>Mode</span><select aria-label="Mode" value={props.area.mode} onChange={(event) => { props.onChange({ type: "set-mode", value: event.currentTarget.value }); }}><For each={props.modes}>{(mode) => <option value={mode.id}>{mode.name}</option>}</For></select><small>Changing mode preserves explicit overrides.</small></label>
         <Show when={props.isRegion}>
-          <div class="field region-enabled-field"><span>Enabled</span><div class="toggle-row"><div class="checkbox-copy"><strong>Use this region</strong><span>Disabled regions remain in the file.</span></div><label class="switch"><input aria-label="Use this region" type="checkbox" checked={props.area.enabled !== false} onChange={(event) => { props.onChange({ type: "set-enabled", value: event.currentTarget.checked }); }} /><span class="switch-track" /></label></div></div>
+          <div class="field region-enabled-field"><span>Enabled</span><ControlRow kind="boolean" variant="standalone" label="Use this region" description="Disabled regions remain in the file." checked={props.area.enabled !== false} onChange={(value) => { props.onChange({ type: "set-enabled", value }); }} /></div>
           <label class="field region-map-field"><span>Coordinate map</span><select aria-label="Coordinate map" value={props.area.map} onChange={(event) => { props.onChange({ type: "set-map", value: event.currentTarget.value }); }}><For each={props.maps}>{(map) => <option value={map.id}>{map.label}</option>}</For></select></label>
           <label class="field region-level-field"><span>Minimum player level</span><input aria-label="Minimum player level" type="number" min="1" max="999" step="1" value={props.area.minimumLevel ?? ""} placeholder={props.modeMinimumLevel == null ? "Mode: no requirement" : `Mode: level ${props.modeMinimumLevel}`} onChange={(event) => { setLevel(event.currentTarget.value); }} /><small>Leave blank to use the mode setting.</small></label>
         </Show>

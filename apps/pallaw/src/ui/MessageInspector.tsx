@@ -1,6 +1,7 @@
 import { For, Show, createSignal } from "solid-js";
 import { ALERT_PRESENTATIONS, ALERT_TONES, MESSAGE_EVENTS, formatTemplate } from "../domain/rules";
 import type { MessageIntent } from "../editor/intents";
+import { ControlRow, ControlRowGroup } from "./ControlRow";
 export type { MessageIntent } from "../editor/intents";
 
 interface AlertMessage { readonly enabled: boolean; readonly text: string; readonly tone?: string; }
@@ -58,7 +59,7 @@ export function MessageInspector(props: {
   const selectedDefinition = () => MESSAGE_EVENTS.find((event) => event.id === props.selectedEventId) ?? MESSAGE_EVENTS[0]!;
   return <>
     <Show when={Boolean(props.showHeader && props.selectedEventId)}><div class="inspector-header"><h2>{selectedDefinition().label}</h2><p>System chat and native Palworld alert presentations are configured independently for this event.</p></div></Show>
-    <Show when={!props.areaName}><div class="toggle-row"><div class="checkbox-copy"><strong>Enable all messages</strong><span>Master switch for every configured player message.</span></div><label class="switch"><input aria-label="Enable all messages" type="checkbox" checked={props.messages.enabled} onChange={(event) => { props.onChange({ type: "set-messages-enabled", value: event.currentTarget.checked }); }} /><span class="switch-track" /></label></div></Show>
+    <Show when={!props.areaName}><ControlRow kind="boolean" variant="standalone" label="Enable all messages" description="Master switch for every configured player message." checked={props.messages.enabled} onChange={(value) => { props.onChange({ type: "set-messages-enabled", value }); }} /></Show>
     <Show when={props.areaName}><p class="help">Events without a local override use the current global defaults. Customize only what this area needs.</p></Show>
     <div class="message-event-list"><For each={events()}>{(event) => {
       const message = () => props.resolved[event.id]!;
@@ -67,11 +68,11 @@ export function MessageInspector(props: {
       return <details classList={{ "message-event": true, "selected-event": Boolean(props.selectedEventId), "uses-default": usesDefault() }} open={Boolean(props.selectedEventId)}>
         <summary><strong>{event.label}</strong><span>{usesDefault() ? "Default" : message().enabled ? `${enabledOutputCount(message())} outputs` : "Disabled"}</span><Show when={usesDefault()}><span class="badge">Global</span></Show></summary>
         <div class="message-event-body">
-          <Show when={props.areaName}><div class="toggle-row message-override-toggle"><div class="checkbox-copy"><strong>Override global message</strong><span>Use custom settings for {props.areaName}.</span></div><label class="switch"><input aria-label={`Override ${event.label}`} type="checkbox" checked={!usesDefault()} onChange={(change) => { props.onChange({ type: "set-override", eventId: event.id, value: change.currentTarget.checked }); }} /><span class="switch-track" /></label></div></Show>
-          <div class="control-row-group event-settings-card">
-            <div class="control-row"><span class="checkbox-copy"><strong>Enable event</strong><span>{event.description}</span></span><label class="switch"><input aria-label={`Enable ${event.label}`} type="checkbox" checked={message().enabled} disabled={usesDefault()} onChange={(change) => { props.onChange({ type: "set-event-enabled", eventId: event.id, value: change.currentTarget.checked }); }} /><span class="switch-track" /></label></div>
-            <label class="control-row control-row-number"><span class="checkbox-copy"><strong>Cooldown seconds</strong></span><input aria-label={`${event.label} cooldown seconds`} type="number" min="0" max="300" step="0.1" value={message().cooldownSeconds} disabled={usesDefault()} onChange={(change) => { props.onChange({ type: "set-cooldown", eventId: event.id, value: Math.max(0, Math.min(300, Number(change.currentTarget.value))) }); }} /></label>
-          </div>
+          <Show when={props.areaName}><ControlRow kind="boolean" variant="standalone" class="message-override-toggle" label="Override global message" accessibleLabel={`Override ${event.label}`} description={`Use custom settings for ${props.areaName}.`} checked={!usesDefault()} onChange={(value) => { props.onChange({ type: "set-override", eventId: event.id, value }); }} /></Show>
+          <ControlRowGroup class="event-settings-card">
+            <ControlRow kind="boolean" label="Enable event" accessibleLabel={`Enable ${event.label}`} description={event.description} checked={message().enabled} disabled={usesDefault()} onChange={(value) => { props.onChange({ type: "set-event-enabled", eventId: event.id, value }); }} />
+            <ControlRow kind="number" label="Cooldown seconds" accessibleLabel={`${event.label} cooldown seconds`} value={message().cooldownSeconds} min={0} max={300} step={0.1} disabled={usesDefault()} onChange={(value) => { props.onChange({ type: "set-cooldown", eventId: event.id, value }); }} />
+          </ControlRowGroup>
           <div class="channel-card">
             <div class="channel-header"><div><strong>System chat</strong><small>Private system-chat message for the affected player.</small></div><label class="switch"><input aria-label="Enable System chat" type="checkbox" checked={message().chat.enabled} disabled={usesDefault()} onChange={(change) => { props.onChange({ type: "set-chat-enabled", eventId: event.id, value: change.currentTarget.checked }); }} /><span class="switch-track" /></label></div>
             <label class="field"><span>Message</span><textarea ref={(element) => { textareas[`${event.id}:chat:`] = element; }} maxlength="512" disabled={usesDefault()} value={message().chat.text} onChange={(change) => { props.onChange({ type: "set-chat-text", eventId: event.id, value: change.currentTarget.value }); }} /></label>

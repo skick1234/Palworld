@@ -1,5 +1,5 @@
-import { fireEvent, render, screen } from "@solidjs/testing-library";
-import { describe, expect, test, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@solidjs/testing-library";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { MessageInspector } from "../src/ui/MessageInspector";
 
 const message = {
@@ -13,6 +13,16 @@ const message = {
 };
 
 describe("MessageInspector", () => {
+  afterEach(cleanup);
+
+  test("reports the global message control as an intent", async () => {
+    const change = vi.fn();
+    render(() => <MessageInspector messages={{ enabled: true, actionNames: {}, actionDenied: message }} resolved={{ actionDenied: message }} selectedEventId="actionDenied" modeName="Safe" onChange={change} />);
+
+    await fireEvent.click(screen.getByLabelText("Enable all messages"));
+    expect(change).toHaveBeenCalledWith({ type: "set-messages-enabled", value: false });
+  });
+
   test("reports a chat-channel toggle as an intent", async () => {
     const change = vi.fn();
     render(() => <MessageInspector messages={{ enabled: true, actionNames: {}, actionDenied: message }} resolved={{ actionDenied: message }} selectedEventId="actionDenied" modeName="Safe" onChange={change} />);

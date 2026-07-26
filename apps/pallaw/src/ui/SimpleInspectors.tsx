@@ -1,4 +1,5 @@
 import { For, createEffect, createSignal } from "solid-js";
+import { ControlRow, ControlRowGroup } from "./ControlRow";
 
 export interface RuntimeSettings {
   readonly hotReload: boolean;
@@ -50,19 +51,10 @@ export function SettingsInspector(props: {
     <div class="settings-groups"><For each={groups}>{(group) => (
       <section class="settings-group">
         <h3>{group}</h3>
-        <div class="control-row-group settings-row-group"><For each={DEFINITIONS.filter((definition) => definition.group === group)}>{(definition) => (
-          <label classList={{ "control-row": true, "control-row-number": definition.type === "number" }}>
-            <span class="control-row-copy"><strong>{definition.label}</strong><span>{definition.description}</span></span>
-            <span class="control-row-control">
-              {definition.type === "boolean"
-                ? <span class="switch"><input aria-label={definition.label} type="checkbox" checked={Boolean(value(definition))} onChange={(event) => { props.onChange(definition.scope, definition.id, event.currentTarget.checked); }} /><span class="switch-track" /></span>
-                : <input aria-label={definition.label} type="number" min={definition.min} max={definition.max} step={definition.step} value={Number(value(definition))} onChange={(event) => {
-                  const raw = Number(event.currentTarget.value);
-                  props.onChange(definition.scope, definition.id, Math.max(definition.min!, Math.min(definition.max!, raw)));
-                }} />}
-            </span>
-          </label>
-        )}</For></div>
+        <ControlRowGroup class="settings-row-group"><For each={DEFINITIONS.filter((definition) => definition.group === group)}>{(definition) => definition.type === "boolean"
+          ? <ControlRow kind="boolean" label={definition.label} description={definition.description} checked={Boolean(value(definition))} onChange={(next) => { props.onChange(definition.scope, definition.id, next); }} />
+          : <ControlRow kind="number" label={definition.label} description={definition.description} value={Number(value(definition))} min={definition.min!} max={definition.max!} step={definition.step!} onChange={(next) => { props.onChange(definition.scope, definition.id, next); }} />
+        }</For></ControlRowGroup>
       </section>
     )}</For></div>
   </>;
