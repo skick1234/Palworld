@@ -10,18 +10,18 @@ The Apache License 2.0 applies only to this project's original source code and d
 
 Pocketpair's current fan-content terms are available in its [Guidelines for Derivative Works](https://www.pocketpair.jp/en/guidelines-derivativework-en/). Rights holders may report concerns through this repository's issue tracker.
 
-## PalLaw Rules Studio development
+## Static-site development
 
-PalLaw Rules Studio is a static SolidJS application built with TypeScript and Vite. Run all commands from this repository with Bun:
+The landing page, Legal notices, PalLaw Rules Studio, and PalOps operator guide are one multi-page SolidJS application built by a single TypeScript/Vite project. The separately self-hosted `apps/palops-dashboard/` package is not part of the GitHub Pages project. Run all static-site commands from this repository with Bun:
 
 ```powershell
 bun install --frozen-lockfile
 bun run typecheck
-bun run test:pallaw
-bun run build:pallaw
+bun run test
+bun run build
 ```
 
-Source lives under `apps/pallaw/src/`:
+Page source lives under `apps/landing/`, `apps/legal/`, `apps/pallaw/`, and `apps/palops/`; shared Solid controls live under `apps/shared/`. PalLaw's deeper application source lives under `apps/pallaw/src/`:
 
 - `domain/` parses, migrates, hydrates, validates, evaluates, and serializes the public configuration contract without DOM, storage, Solid, or Leaflet dependencies.
 - `document/` owns immutable snapshots, bounded undo/redo history, dirty state, import/export, validation, and draft persistence. Accepted commands publish and persist at most once.
@@ -29,10 +29,10 @@ Source lives under `apps/pallaw/src/`:
 - `map/` is the only module that accesses `window.L`. Its `MapController` interface accepts PalLaw coordinates and owns Leaflet listeners, layers, drawing, editing, moving, fitting, resize observation, and disposal.
 - `ui/` contains the single Solid application root and feature components. Components emit intent-level actions rather than mutating document snapshots.
 
-Vite writes deterministic `app.js` and `app.css` files to the ignored `site/pallaw/build/` directory. Never commit that directory. The production budgets are 130 kB for application JavaScript and 60 kB for application CSS, excluding vendored Leaflet and map imagery; `tests/public-web/verify-site.mjs` builds, reports gzip sizes, and enforces these limits.
+One Vite build writes deterministic page entries, shared chunks, and PalLaw CSS to the ignored `site/build/` directory. Never commit that directory. The production budgets are 160 kB for all generated JavaScript and 60 kB for PalLaw CSS, excluding vendored Leaflet and map imagery; `tests/public-web/verify-site.mjs` builds, reports gzip sizes, and enforces these limits.
 
-GitHub Pages installs, type-checks, tests, and builds with Bun, then uploads only `site/`. The tracked `site/pallaw/index.html` retains `script-src 'self'` and `connect-src 'none'`; do not add inline executable scripts, runtime configuration requests, telemetry, or unapproved remote hosts. Theme and Donate behavior remain first-party shared modules, and the Ko-fi iframe is created only after user interaction.
+GitHub Pages installs, type-checks, tests, and runs the single Vite build with Bun, then uploads only `site/`. Every tracked page retains `script-src 'self'` and `connect-src 'none'`; do not add inline executable scripts, runtime configuration requests, telemetry, or unapproved remote hosts. Theme and Donate behavior are shared Solid components, and the Ko-fi iframe is created only after user interaction.
 
-If the final Solid cutover must be rolled back, revert the public migration commits to `706f7d0` and revert the corresponding parent-repository submodule pointer. Rebuild generated assets rather than editing or restoring files under `site/pallaw/build/`.
+If the Solid cutover must be rolled back, revert the public migration commits to `706f7d0` and revert the corresponding parent-repository submodule pointer. Rebuild generated assets rather than editing or restoring files under `site/build/`.
 
 Automated checks do not replace native browser, responsive, download, shared-script, or interactive-map verification. Complete [`docs/PALLAW_MANUAL_CHECKLIST.md`](docs/PALLAW_MANUAL_CHECKLIST.md) before publishing a frontend change.

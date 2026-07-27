@@ -4,7 +4,11 @@ on:
   push:
     branches: [main]
     paths:
+      - "apps/landing/**"
+      - "apps/legal/**"
       - "apps/pallaw/**"
+      - "apps/palops/**"
+      - "apps/shared/**"
       - "package.json"
       - "bun.lock"
       - "tsconfig.json"
@@ -35,12 +39,12 @@ jobs:
         uses: oven-sh/setup-bun@v2
       - name: Install dependencies
         run: bun install --frozen-lockfile
-      - name: Typecheck PalLaw
+      - name: Typecheck static site
         run: bun run typecheck
-      - name: Test PalLaw
-        run: bun run test:pallaw
-      - name: Build PalLaw
-        run: bun run build:pallaw
+      - name: Test static site
+        run: bun run test
+      - name: Build static site
+        run: bun run build
       - name: Configure Pages
         uses: actions/configure-pages@v6
       - name: Upload static site

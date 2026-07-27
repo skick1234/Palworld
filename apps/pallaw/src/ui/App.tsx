@@ -17,6 +17,7 @@ import { SettingsInspector, JsonInspector, type SettingScope } from "./SimpleIns
 import { Sidebar, type SidebarActions, type SidebarState } from "./Sidebar";
 import { WorkspaceViewNav } from "./WorkspaceViewNav";
 import { createPalLawCommands } from "../editor/create-pallaw-commands";
+import { SupportControl, ThemeToggle } from "../../../shared/src/SiteControls";
 
 const LOCALIZATION = "localization";
 type ToastKind = "success" | "error";
@@ -242,7 +243,7 @@ export function App(props: AppProps) {
         <div class="top-actions"><div class="history-actions" aria-label="Change history">
           <button class="icon-button history-button" type="button" aria-label="Undo" disabled={!snapshot().canUndo} onClick={() => { props.editorDocument.dispatch({ type: "undo" }); }}><span class="hero-icon hero-icon-arrow-uturn-left" aria-hidden="true" /></button>
           <button class="icon-button history-button" type="button" aria-label="Redo" disabled={!snapshot().canRedo} onClick={() => { props.editorDocument.dispatch({ type: "redo" }); }}><span class="hero-icon hero-icon-arrow-uturn-right" aria-hidden="true" /></button></div>
-          <button class="theme-toggle" type="button" data-theme-toggle aria-label="Change color theme">LT</button><a class="discord-link" href="https://discord.gg/zzhK54aaYz" target="_blank" rel="noreferrer">Discord</a><button class="support-trigger" type="button" data-support-trigger>Donate</button>
+          <ThemeToggle /><a class="discord-link" href="https://discord.gg/zzhK54aaYz" target="_blank" rel="noreferrer">Discord</a><SupportControl />
           <button class="button ghost" type="button" onClick={(event) => { openActionDialog({ kind: "new" }, event.currentTarget); }}>New</button>
           <button class="button ghost" type="button" onClick={() => { importInput.click(); }}>Import</button>
           <button class="button primary" type="button" aria-label="Export PalLaw.json" disabled={!snapshot().validation.valid} onClick={() => { const exported = props.editorDocument.export(); download(exported.fileName, exported.contents); props.editorDocument.dispatch({ type: "mark-exported" }); toast(`${exported.fileName} exported.`); }}><span class="export-label-full">Export PalLaw.json</span><span class="export-label-short">Export</span></button>

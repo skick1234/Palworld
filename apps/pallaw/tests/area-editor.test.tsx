@@ -23,15 +23,22 @@ describe("AreaEditor", () => {
     expect(area.name).toBe("North");
   });
 
-  test("presents modes as a wrapping badge selector", async () => {
+  test("shows the current mode until its wrapping badge menu is opened", async () => {
     const change = vi.fn();
     const area = { name: "North", mode: "safe", enabled: true, map: "world", minimumLevel: null, polygon: [[0, 0], [10, 0], [0, 10]] as [number, number][], actions: {}, combat: [], messages: {} };
     render(() => <AreaEditor area={area} kind="region" modes={[{ id: "safe", name: "Safe", color: "#22C55E" }, { id: "pvp", name: "PvP", color: "#EF4444" }]} maps={[{ id: "world", label: "World" }]} effectiveActions={{}} effectiveCombat={{}} modeName="Safe" messages={{ enabled: true, actionNames: {} }} resolvedMessages={{}} overrideFor={() => "default"} onChange={change} />);
 
+    const toggle = screen.getByLabelText("Current mode: Safe. Change mode");
+    const disclosure = toggle.closest("details");
+    expect(screen.queryByText("Changing mode preserves explicit overrides.")).toBeNull();
+    expect(disclosure?.open).toBe(false);
+    await fireEvent.click(toggle);
+    expect(disclosure?.open).toBe(true);
     expect(screen.getByRole("radiogroup", { name: "Mode" })).toBeTruthy();
     expect(screen.getByRole("radio", { name: /Safe/ }).getAttribute("aria-checked")).toBe("true");
     await fireEvent.click(screen.getByRole("radio", { name: /PvP/ }));
     expect(change).toHaveBeenCalledWith({ type: "set-mode", value: "pvp" });
+    expect(disclosure?.open).toBe(false);
   });
 
   test("reports invalid polygon coordinates without throwing or dispatching", async () => {

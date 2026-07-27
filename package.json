@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "typecheck": "bun x tsc --noEmit",
-    "build:pallaw": "bun x vite build",
-    "test:pallaw": "bun x vitest run apps/pallaw/tests"
+    "build": "bun x vite build",
+    "test": "bun x vitest run apps/landing/tests apps/legal/tests apps/pallaw/tests apps/palops/tests apps/shared/tests"
   },
   "dependencies": {
     "solid-js": "^1.9.14"

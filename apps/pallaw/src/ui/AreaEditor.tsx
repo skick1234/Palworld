@@ -33,6 +33,7 @@ export function AreaEditor(props: {
   readonly overrideFor: (source: string, target: string) => CombatOverride;
   readonly onChange: (intent: AreaIntent) => void;
 }) {
+  let modeSelect: HTMLDetailsElement | undefined;
   const [tab, setTab] = createSignal<"general" | "rules" | "messages">("general");
   const [polygonText, setPolygonText] = createSignal(JSON.stringify(props.area.polygon ?? [], null, 2));
   const [polygonError, setPolygonError] = createSignal("");
@@ -62,7 +63,7 @@ export function AreaEditor(props: {
           <div class="region-form-heading"><h3>Identity</h3><p>Name the area and choose the mode it inherits from.</p></div>
           <div class="region-identity-grid">
             <label class="field area-name-field"><span>Name</span><input aria-label="Name" maxlength="96" value={props.area.name} onChange={(event) => { props.onChange({ type: "set-name", value: event.currentTarget.value.trim() }); }} /><small>Names must be unique, ignoring letter case. This value appears in messages.</small></label>
-            <fieldset class="field area-mode-field"><legend>Mode</legend><div class="mode-choice-list" role="radiogroup" aria-label="Mode"><For each={props.modes}>{(mode) => <button type="button" role="radio" classList={{ "mode-choice": true, selected: props.area.mode === mode.id }} aria-checked={props.area.mode === mode.id} onClick={() => { props.onChange({ type: "set-mode", value: mode.id }); }}><ModeBadge modeId={mode.id} modes={props.modes} /></button>}</For></div><small>Changing mode preserves explicit overrides.</small></fieldset>
+            <fieldset class="field area-mode-field"><legend>Mode</legend><details ref={modeSelect} class="mode-select"><summary aria-label={`Current mode: ${props.modeName}. Change mode`}><ModeBadge modeId={props.area.mode} modes={props.modes} /></summary><div class="mode-select-options" role="radiogroup" aria-label="Mode"><For each={props.modes}>{(mode) => <button type="button" role="radio" aria-checked={props.area.mode === mode.id} onClick={() => { props.onChange({ type: "set-mode", value: mode.id }); if (modeSelect) { modeSelect.open = false; modeSelect.querySelector<HTMLElement>("summary")?.focus(); } }}><ModeBadge modeId={mode.id} modes={props.modes} /></button>}</For></div></details></fieldset>
           </div>
         </section>
         <Show when={props.kind === "region"}>
