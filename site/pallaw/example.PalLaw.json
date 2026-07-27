@@ -68,6 +68,10 @@
     "name": "Wilderness",
     "mode": "pve"
   },
+  "stageAreas": {
+    "name": "Stage Areas",
+    "mode": "pve"
+  },
   "regions": [
     {
       "name": "PvP Island",

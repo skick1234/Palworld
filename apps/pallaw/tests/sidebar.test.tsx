@@ -8,11 +8,13 @@ describe("RegionSidebar", () => {
     render(() => (
       <RegionSidebar
         wilderness={{ name: "Wilderness", mode: "safe" }}
+        stageAreas={{ name: "Stage Areas", mode: "safe" }}
         regions={[{ name: "North", mode: "safe", map: "world" }, { name: "South", mode: "pvp", map: "world" }]}
         modes={[{ id: "safe", name: "Safe", color: "#22c55e" }, { id: "pvp", name: "PvP", color: "#f43f5e" }]}
         selectedIndex={0}
         onSelect={select}
         onOpenWilderness={() => undefined}
+        onOpenStageAreas={() => undefined}
         onOpenRegion={() => undefined}
         onMove={() => undefined}
         onDuplicate={() => undefined}

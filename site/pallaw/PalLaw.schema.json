@@ -4,7 +4,7 @@
   "title": "PalLaw Configuration Version 3",
   "type": "object",
   "additionalProperties": false,
-  "required": ["version", "modes", "wilderness"],
+  "required": ["version", "modes", "wilderness", "stageAreas"],
   "properties": {
     "$schema": { "type": "string" },
     "version": { "const": 3 },
@@ -19,6 +19,7 @@
       "items": { "$ref": "#/$defs/modeDefinition" }
     },
     "wilderness": { "$ref": "#/$defs/wilderness" },
+    "stageAreas": { "$ref": "#/$defs/stageAreas" },
     "regions": {
       "type": "array",
       "maxItems": 1024,
@@ -252,6 +253,19 @@
     },
     "wilderness": {
       "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "mode"],
+      "properties": {
+        "name": { "$ref": "#/$defs/displayName" },
+        "mode": { "$ref": "#/$defs/modeId" },
+        "actions": { "$ref": "#/$defs/actions" },
+        "combat": { "$ref": "#/$defs/combatOverrides" },
+        "messages": { "$ref": "#/$defs/messageOverrides" }
+      }
+    },
+    "stageAreas": {
+      "type": "object",
+      "description": "Fixed-priority policy for actors inside Dungeon, Boss Battle, Arena, Room, or Raid Boss stages. Geographic Regions and Wilderness do not apply while this area is active.",
       "additionalProperties": false,
       "required": ["name", "mode"],
       "properties": {

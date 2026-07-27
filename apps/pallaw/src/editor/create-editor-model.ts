@@ -22,6 +22,7 @@ export interface EditorViewState<TConfig> {
   readonly editingShape: boolean;
   readonly areaDialogOpen: boolean;
   readonly editingWilderness: boolean;
+  readonly editingStageAreas: boolean;
 }
 
 interface MutableEditorViewState<TConfig> {
@@ -37,6 +38,7 @@ interface MutableEditorViewState<TConfig> {
   editingShape: boolean;
   areaDialogOpen: boolean;
   editingWilderness: boolean;
+  editingStageAreas: boolean;
 }
 
 export interface EditorModel<TConfig> {
@@ -50,7 +52,7 @@ export interface EditorModel<TConfig> {
   setSelectedMessage(id: string): void;
   setActiveMap(id: string): void;
   setEditingShape(value: boolean): void;
-  setAreaDialog(open: boolean, wilderness?: boolean): void;
+  setAreaDialog(open: boolean, kind?: "region" | "wilderness" | "stageAreas"): void;
   dispose(): void;
 }
 
@@ -68,7 +70,8 @@ export function createEditorModel<TConfig extends EditorConfigurationShape>(docu
     activeMapId: "world",
     editingShape: false,
     areaDialogOpen: false,
-    editingWilderness: false
+    editingWilderness: false,
+    editingStageAreas: false
   });
 
   const unsubscribe = document.subscribe((snapshot) => {
@@ -92,9 +95,10 @@ export function createEditorModel<TConfig extends EditorConfigurationShape>(docu
     setSelectedMessage: (id: string) => { setState("selectedMessageId", id); },
     setActiveMap: (id: string) => { setState("activeMapId", id); },
     setEditingShape: (value: boolean) => { setState("editingShape", value); },
-    setAreaDialog: (open: boolean, wilderness = false) => {
+    setAreaDialog: (open: boolean, kind = "region") => {
       setState("areaDialogOpen", open);
-      setState("editingWilderness", open && wilderness);
+      setState("editingWilderness", open && kind === "wilderness");
+      setState("editingStageAreas", open && kind === "stageAreas");
     },
     dispose: unsubscribe
   };

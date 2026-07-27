@@ -39,4 +39,16 @@ describe("PalLaw application", () => {
     expect(editorDocument.read().config.modes.some((mode) => mode.id === "pve")).toBe(false);
     expect(editorDocument.read().canUndo).toBe(true);
   });
+
+  test("edits the fixed Stage Areas policy through the shared area dialog", async () => {
+    const editorDocument = createPalLawDocument(createMemoryDraftAdapter());
+    render(() => <App editorDocument={editorDocument} createMap={() => ({ update: vi.fn(), dispatch: vi.fn(), dispose: vi.fn() })} />);
+
+    await fireEvent.click(screen.getByLabelText("Edit Stage Areas Stage Areas"));
+    expect(screen.getByText("Stage Areas settings")).toBeTruthy();
+    expect(screen.getByText(/Dungeon, Boss Battle, Arena, Room, and Raid Boss/)).toBeTruthy();
+    await fireEvent.click(screen.getByRole("radio", { name: /Safe/, hidden: true }));
+
+    expect(editorDocument.read().config.stageAreas.mode).toBe("safe");
+  });
 });

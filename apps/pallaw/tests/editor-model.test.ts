@@ -16,7 +16,7 @@ describe("editor model", () => {
     model.selectRegion(1);
     model.setSelectedMessage("actionDenied");
     model.setActiveMap("tree");
-    model.setAreaDialog(true, true);
+    model.setAreaDialog(true, "wilderness");
 
     document.dispatch({ type: "mutate", apply: (draft) => { draft.regions.splice(1, 1); } });
 
@@ -25,6 +25,7 @@ describe("editor model", () => {
     expect(model.state.activeMapId).toBe("tree");
     expect(model.state.areaDialogOpen).toBe(true);
     expect(model.state.editingWilderness).toBe(true);
+    expect(model.state.editingStageAreas).toBe(false);
     model.dispose();
   });
 });

@@ -20,7 +20,7 @@ export interface AreaEditorValue {
 
 export function AreaEditor(props: {
   readonly area: AreaEditorValue;
-  readonly isRegion: boolean;
+  readonly kind: "region" | "wilderness" | "stageAreas";
   readonly modes: readonly ModeSummary[];
   readonly maps: readonly { readonly id: string; readonly label: string }[];
   readonly effectiveActions: ActionValues;
@@ -48,7 +48,11 @@ export function AreaEditor(props: {
     }
   };
   return <>
-    <p class="region-editor-context">{props.isRegion ? "Order controls overlap precedence. Lower in the list means higher precedence." : "The Wilderness applies only where no enabled polygon Region matches and stays outside overlap priority."}</p>
+    <p class="region-editor-context">{props.kind === "region"
+      ? "Order controls overlap precedence. Lower in the list means higher precedence."
+      : props.kind === "stageAreas"
+        ? "Applies with fixed priority to actors inside Dungeon, Boss Battle, Arena, Room, and Raid Boss stages. Polygon Regions and Wilderness are not evaluated while Stage Areas applies."
+        : "The Wilderness applies only where no enabled polygon Region matches and stays outside overlap priority."}</p>
     <div class="tab-strip" role="tablist" aria-label="Editor sections">
       <For each={["general", "rules", "messages"] as const}>{(id) => <button type="button" role="tab" aria-selected={tab() === id} classList={{ active: tab() === id }} onClick={() => { setTab(id); }}>{id[0]!.toUpperCase() + id.slice(1)}</button>}</For>
     </div>
@@ -61,7 +65,7 @@ export function AreaEditor(props: {
             <fieldset class="field area-mode-field"><legend>Mode</legend><div class="mode-choice-list" role="radiogroup" aria-label="Mode"><For each={props.modes}>{(mode) => <button type="button" role="radio" classList={{ "mode-choice": true, selected: props.area.mode === mode.id }} aria-checked={props.area.mode === mode.id} onClick={() => { props.onChange({ type: "set-mode", value: mode.id }); }}><ModeBadge modeId={mode.id} modes={props.modes} /></button>}</For></div><small>Changing mode preserves explicit overrides.</small></fieldset>
           </div>
         </section>
-        <Show when={props.isRegion}>
+        <Show when={props.kind === "region"}>
           <section class="region-form-section region-behavior-section">
             <div class="region-form-heading"><h3>Behavior</h3><p>Control when this region applies and which coordinate space it uses.</p></div>
             <div class="region-behavior-grid">

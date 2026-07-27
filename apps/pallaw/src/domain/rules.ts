@@ -271,6 +271,13 @@ export function createDefaultConfig(): PalLawConfigValue {
       combat: [],
       messages: {}
     },
+    stageAreas: {
+      name: "Stage Areas",
+      mode: "pve",
+      actions: {},
+      combat: [],
+      messages: {}
+    },
     regions: []
   };
 }
@@ -511,6 +518,7 @@ export function hydrateConfig(value: unknown): PalLawConfigValue {
   config.messages = normalizeMessages(source.messages, DEFAULT_MESSAGES, true);
   config.modes = Array.isArray(source.modes) ? source.modes.map(normalizeMode) : [];
   config.wilderness = normalizeArea(source.wilderness, "Wilderness");
+  config.stageAreas = normalizeArea(source.stageAreas, "Stage Areas");
   config.regions = Array.isArray(source.regions)
     ? source.regions.map(normalizeRegion)
     : [];
@@ -520,6 +528,7 @@ export function hydrateConfig(value: unknown): PalLawConfigValue {
     writable: true
   });
   attachMode(config.wilderness);
+  attachMode(config.stageAreas);
   config.regions.forEach(attachMode);
   return config;
 }
@@ -636,7 +645,7 @@ export function setQuickCombatOverride(area: AreaValue, source: string, target: 
 
 export function deriveFeatureSummary(input: unknown) {
   const config = hydrateConfig(input);
-  const areas = [config.wilderness, ...config.regions.filter((region) => region.enabled !== false)];
+  const areas = [config.wilderness, config.stageAreas, ...config.regions.filter((region) => region.enabled !== false)];
   const owned = new Set(["player", "partnerPal", "basePal", "baseStructure"]);
   let enablesRegionalPlayerDamage = false;
   let characterPolicyNonVanilla = false;
@@ -765,7 +774,8 @@ export function pointInPolygon(polygon: readonly Point[], point: Point): boolean
   return inside;
 }
 
-export function areaAt(config: PalLawConfigValue, point: Point): AreaValue & { isWilderness: boolean; index: number; minimumLevel: number | null } {
+export function areaAt(config: PalLawConfigValue, point: Point, inStage = false): AreaValue & { isWilderness: boolean; index: number; minimumLevel: number | null } {
+  if (inStage) return { ...config.stageAreas, isWilderness: false, index: -1, minimumLevel: effectiveMinimumLevel(config.stageAreas, config) };
   let result: AreaValue & { isWilderness: boolean; index: number } = { ...config.wilderness, isWilderness: true, index: -1 };
   config.regions.forEach((region, index) => {
     if (region.enabled !== false && pointInPolygon(region.polygon, point)) {
@@ -1004,10 +1014,11 @@ function validateRawRegionalCombat(value: unknown, errors: ErrorSink): void {
 }
 
 function validateRawConfig(input: unknown, errors: ErrorSink): void {
-  if (!rejectUnknownKeys(input, new Set(["$schema", "version", "regionalCombat", "settings", "messages", "modes", "wilderness", "regions"]), "root", errors)) return;
+  if (!rejectUnknownKeys(input, new Set(["$schema", "version", "regionalCombat", "settings", "messages", "modes", "wilderness", "stageAreas", "regions"]), "root", errors)) return;
   if (!Object.hasOwn(input, "version")) errors.push("version is required.");
   if (!Object.hasOwn(input, "modes")) errors.push("modes is required.");
   if (!Object.hasOwn(input, "wilderness")) errors.push("wilderness is required.");
+  if (!Object.hasOwn(input, "stageAreas")) errors.push("stageAreas is required.");
   if (Object.hasOwn(input, "regionalCombat")) {
     validateRawRegionalCombat(input.regionalCombat, errors);
   }
@@ -1021,6 +1032,7 @@ function validateRawConfig(input: unknown, errors: ErrorSink): void {
     else input.modes.forEach((mode, index) => validateRawMode(mode, index, errors));
   }
   if (Object.hasOwn(input, "wilderness")) validateRawArea(input.wilderness, "wilderness", false, errors);
+  if (Object.hasOwn(input, "stageAreas")) validateRawArea(input.stageAreas, "stageAreas", false, errors);
   if (Object.hasOwn(input, "regions")) {
     if (!Array.isArray(input.regions)) errors.push("regions must be an array.");
     else input.regions.forEach((region, index) => validateRawArea(region, `regions[${index}]`, true, errors));
@@ -1060,7 +1072,14 @@ export function validateConfig(input: unknown) {
   if (!modeIds.has(config.wilderness.mode)) errors.push("wilderness.mode references an unknown mode.");
   validateCombat(config.wilderness.combat, "wilderness.combat", errors);
 
+  if (!config.stageAreas.name.trim()) errors.push("stageAreas.name is required.");
+  if (!modeIds.has(config.stageAreas.mode)) errors.push("stageAreas.mode references an unknown mode.");
+  validateCombat(config.stageAreas.combat, "stageAreas.combat", errors);
+
   const names = new Map([[config.wilderness.name.trim().toLowerCase(), "wilderness"]]);
+  const normalizedStageName = config.stageAreas.name.trim().toLowerCase();
+  if (normalizedStageName && names.has(normalizedStageName)) errors.push(`stageAreas.name duplicates ${names.get(normalizedStageName)}.`);
+  else if (normalizedStageName) names.set(normalizedStageName, "stageAreas");
   config.regions.forEach((region, index) => {
     const prefix = `regions[${index}]`;
     const name = region.name.trim();
@@ -1085,6 +1104,9 @@ export function validateConfig(input: unknown) {
     validateCombat(region.combat, `${prefix}.combat`, errors);
     if (!region.enabled) warnings.push(`${prefix} (${region.name || "unnamed"}) is disabled.`);
   });
+
+  const stageMessages = resolveAreaMessages(config, config.stageAreas);
+  for (const event of MESSAGE_EVENTS) validateMessage(messageFor(stageMessages, event.id), `stageAreas.messages.${event.id}`, errors);
 
   const globalMessages = normalizeMessages(config.messages, DEFAULT_MESSAGES, true);
   for (const event of MESSAGE_EVENTS) validateMessage(messageFor(globalMessages, event.id), `messages.${event.id}`, errors);
@@ -1198,6 +1220,7 @@ export function serializeConfig(input: unknown): JsonRecord {
       ...(Object.keys(mode.messages || {}).length ? { messages: clone(mode.messages) } : {})
     })),
     wilderness: compactArea(config.wilderness, config.messages),
+    stageAreas: compactArea(config.stageAreas, config.messages),
     regions: config.regions.map((region) => {
       const area = compactArea(region, config.messages);
       return {
@@ -1404,6 +1427,24 @@ function currentMigrationRegistry(): MigrationDefinition[] {
         migrateArea(region, `$.regions[${index}]`);
       });
     }
+    if (!isPlainObject(document.wilderness)) return;
+    const stageAreas = clone(document.wilderness) as JsonObject;
+    const names = new Set<string>();
+    const rememberName = (area: unknown) => {
+      if (isPlainObject(area) && typeof area.name === "string") names.add(area.name.toLocaleLowerCase());
+    };
+    rememberName(document.wilderness);
+    if (Array.isArray(document.regions)) document.regions.forEach(rememberName);
+    let stageName = "Stage Areas";
+    for (let suffix = 2; names.has(stageName.toLocaleLowerCase()); suffix += 1) stageName = `Stage Areas ${suffix}`;
+    stageAreas.name = stageName;
+    document.stageAreas = stageAreas;
+    addMigrationFallback(report, {
+      fromVersion: 2,
+      toVersion: 3,
+      path: "$.stageAreas",
+      message: `Created ${stageName} from Wilderness because older configurations had no separate policy for Palworld stages.`
+    });
   };
   return [
     {

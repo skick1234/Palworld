@@ -67,5 +67,6 @@ export interface PalLawConfigValue {
   messages: GlobalMessages;
   modes: ModeValue[];
   wilderness: AreaValue;
+  stageAreas: AreaValue;
   regions: RegionValue[];
 }

@@ -8,12 +8,13 @@ import type { EditorModel } from "./create-editor-model";
 export type MessageSubject =
   | { readonly kind: "global" }
   | { readonly kind: "wilderness" }
+  | { readonly kind: "stageAreas" }
   | { readonly kind: "region"; readonly index: number }
   | { readonly kind: "mode"; readonly index: number };
 
 export interface PalLawCommands {
   applyMessage(subject: MessageSubject, intent: MessageIntent): void;
-  applyArea(subject: { readonly wilderness: boolean; readonly index: number | null }, intent: Exclude<AreaIntent, { type: "fit-region" }>): void;
+  applyArea(subject: { readonly kind: "wilderness" } | { readonly kind: "stageAreas" } | { readonly kind: "region"; readonly index: number }, intent: Exclude<AreaIntent, { type: "fit-region" }>): void;
   applyMode(index: number, intent: ModeIntent): void;
   changeSetting(scope: "settings" | "regionalCombat", id: string, value: boolean | number): void;
   moveRegion(index: number, direction: number): void;
@@ -33,6 +34,7 @@ function globalMessage(config: PalLawConfig, eventId: string): EventMessage {
 
 function subjectFor(config: PalLawConfig, subject: Exclude<MessageSubject, { kind: "global" }>) {
   if (subject.kind === "wilderness") return config.wilderness;
+  if (subject.kind === "stageAreas") return config.stageAreas;
   if (subject.kind === "region") return config.regions[subject.index] ?? null;
   return config.modes[subject.index] ?? null;
 }
@@ -71,11 +73,15 @@ export function createPalLawCommands(document: EditorDocument<PalLawConfig>, mod
     },
     applyArea(subject, intent) {
       if (intent.type === "message") {
-        commands.applyMessage(subject.wilderness ? { kind: "wilderness" } : { kind: "region", index: subject.index! }, intent.intent);
+        commands.applyMessage(subject, intent.intent);
         return;
       }
       mutate((draft) => {
-        const target = subject.wilderness ? draft.wilderness : draft.regions[subject.index ?? -1];
+        const target = subject.kind === "wilderness"
+          ? draft.wilderness
+          : subject.kind === "stageAreas"
+            ? draft.stageAreas
+            : draft.regions[subject.index];
         if (!target) return;
         if (intent.type === "set-name") target.name = intent.value;
         else if (intent.type === "set-mode") target.mode = intent.value;
@@ -132,7 +138,7 @@ export function createPalLawCommands(document: EditorDocument<PalLawConfig>, mod
       return true;
     },
     deleteMode(index, replacement) {
-      mutate((draft) => { const source = draft.modes[index]; if (!source || !draft.modes.some((mode) => mode.id === replacement && mode.id !== source.id)) return; if (draft.wilderness.mode === source.id) draft.wilderness.mode = replacement; draft.regions.forEach((region) => { if (region.mode === source.id) region.mode = replacement; }); draft.modes.splice(index, 1); });
+      mutate((draft) => { const source = draft.modes[index]; if (!source || !draft.modes.some((mode) => mode.id === replacement && mode.id !== source.id)) return; if (draft.wilderness.mode === source.id) draft.wilderness.mode = replacement; if (draft.stageAreas.mode === source.id) draft.stageAreas.mode = replacement; draft.regions.forEach((region) => { if (region.mode === source.id) region.mode = replacement; }); draft.modes.splice(index, 1); });
     },
     setActionName(id, value) { mutate((draft) => { draft.messages.actionNames[id] = value; }); },
     setRegionPolygon(index, polygon) { mutate((draft) => { if (draft.regions[index]) draft.regions[index]!.polygon = polygon.map(([x, y]) => [x, y]); }); },

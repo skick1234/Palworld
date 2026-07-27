@@ -35,11 +35,13 @@ function activateOnKeyboard(event: KeyboardEvent, action: () => void): void {
 
 export interface RegionSidebarProps {
   readonly wilderness: AreaSummary;
+  readonly stageAreas: AreaSummary;
   readonly regions: readonly RegionSummary[];
   readonly modes: readonly ModeSummary[];
   readonly selectedIndex: number | null;
   readonly onSelect: (index: number) => void;
   readonly onOpenWilderness: (trigger: HTMLElement) => void;
+  readonly onOpenStageAreas: (trigger: HTMLElement) => void;
   readonly onOpenRegion: (index: number, trigger: HTMLElement) => void;
   readonly onMove: (index: number, direction: number) => void;
   readonly onDuplicate: (index: number, trigger: HTMLElement) => void;
@@ -72,6 +74,22 @@ export function RegionSidebar(props: RegionSidebarProps) {
           <span class="wilderness-kind-label">{props.wilderness.name.trim().toLocaleLowerCase() === "wilderness" ? "Outside region" : "Wilderness"}</span>
           <div class="sidebar-card-actions">
             <button type="button" class="sidebar-card-icon settings" title="Wilderness settings" aria-label={`Open settings for Wilderness ${props.wilderness.name}`} onClick={(event) => { event.stopPropagation(); props.onOpenWilderness(event.currentTarget); }}><Icon name="cog-6-tooth" /></button>
+          </div>
+        </footer>
+      </article>
+      <article
+        class="sidebar-card wilderness-card stage-areas-card"
+        data-stage-areas
+        tabindex="0"
+        aria-label={`Edit Stage Areas ${props.stageAreas.name}`}
+        onClick={(event) => { props.onOpenStageAreas(event.currentTarget); }}
+        onKeyDown={(event) => { activateOnKeyboard(event, () => { props.onOpenStageAreas(event.currentTarget); }); }}
+      >
+        <CardHeader title={props.stageAreas.name}><ModeBadge modeId={props.stageAreas.mode} modes={props.modes} /></CardHeader>
+        <footer class="sidebar-card-footer wilderness-footer">
+          <span class="wilderness-kind-label">Fixed stage priority</span>
+          <div class="sidebar-card-actions">
+            <button type="button" class="sidebar-card-icon settings" title="Stage Areas settings" aria-label={`Open settings for Stage Areas ${props.stageAreas.name}`} onClick={(event) => { event.stopPropagation(); props.onOpenStageAreas(event.currentTarget); }}><Icon name="cog-6-tooth" /></button>
           </div>
         </footer>
       </article>
@@ -165,6 +183,7 @@ function MessageSidebar(props: { readonly messages: readonly MessageSummary[]; r
 
 interface SidebarConfig {
   readonly wilderness: AreaSummary;
+  readonly stageAreas: AreaSummary;
   readonly regions: readonly RegionSummary[];
   readonly modes: readonly ModeSummary[];
   readonly settings: { readonly hotReload: boolean; readonly hotReloadSeconds: number; readonly worldRules: boolean; readonly adminBypass: boolean };
@@ -183,6 +202,7 @@ export interface SidebarState {
 export interface SidebarActions {
   readonly selectRegion: (index: number) => void;
   readonly openWilderness: (trigger: HTMLElement) => void;
+  readonly openStageAreas: (trigger: HTMLElement) => void;
   readonly openRegion: (index: number, trigger: HTMLElement) => void;
   readonly moveRegion: (index: number, direction: number) => void;
   readonly duplicateRegion: (index: number, trigger: HTMLElement) => void;
@@ -196,7 +216,7 @@ export interface SidebarActions {
 
 export function Sidebar(props: { readonly state: SidebarState; readonly actions: SidebarActions }) {
   return <>
-    <Show when={props.state.section === "regions"}><RegionSidebar wilderness={props.state.config.wilderness} regions={props.state.config.regions} modes={props.state.config.modes} selectedIndex={props.state.selectedRegionIndex} onSelect={props.actions.selectRegion} onOpenWilderness={props.actions.openWilderness} onOpenRegion={props.actions.openRegion} onMove={props.actions.moveRegion} onDuplicate={props.actions.duplicateRegion} onDelete={props.actions.deleteRegion} /></Show>
+    <Show when={props.state.section === "regions"}><RegionSidebar wilderness={props.state.config.wilderness} stageAreas={props.state.config.stageAreas} regions={props.state.config.regions} modes={props.state.config.modes} selectedIndex={props.state.selectedRegionIndex} onSelect={props.actions.selectRegion} onOpenWilderness={props.actions.openWilderness} onOpenStageAreas={props.actions.openStageAreas} onOpenRegion={props.actions.openRegion} onMove={props.actions.moveRegion} onDuplicate={props.actions.duplicateRegion} onDelete={props.actions.deleteRegion} /></Show>
     <Show when={props.state.section === "modes"}><ModeSidebar modes={props.state.config.modes} selectedIndex={props.state.selectedModeIndex} onSelect={props.actions.selectMode} onMove={props.actions.moveMode} onDuplicate={props.actions.duplicateMode} onDelete={props.actions.deleteMode} /></Show>
     <Show when={props.state.section === "messages"}><MessageSidebar messages={props.state.messages} selectedId={props.state.selectedMessageId} onSelect={props.actions.selectMessage} /></Show>
     <Show when={props.state.section === "settings"}>

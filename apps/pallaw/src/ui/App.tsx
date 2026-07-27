@@ -56,6 +56,7 @@ export function App(props: AppProps) {
   const [drawPointCount, setDrawPointCount] = createSignal(0);
   const [coordinateReadout, setCoordinateReadout] = createSignal("Map X - | Y -");
   const editingWilderness = () => model.state.editingWilderness;
+  const editingStageAreas = () => model.state.editingStageAreas;
   const areaDialogOpen = () => model.state.areaDialogOpen;
   const [rawValue, setRawValue] = createSignal(model.state.snapshot.serialized);
   const [toasts, setToasts] = createSignal<readonly Toast[]>([]);
@@ -76,7 +77,11 @@ export function App(props: AppProps) {
   const config = () => snapshot().config as PalLawConfig;
   const selectedRegion = () => model.state.selectedRegionIndex === null ? null : config().regions[model.state.selectedRegionIndex] ?? null;
   const selectedMode = () => config().modes[model.state.selectedModeIndex] ?? null;
-  const area = () => editingWilderness() ? config().wilderness : selectedRegion();
+  const area = () => editingWilderness()
+    ? config().wilderness
+    : editingStageAreas()
+      ? config().stageAreas
+      : selectedRegion();
   const messageCollection = () => config().messages as unknown as MessageCollection;
   const messageResolved = (subject: Pick<PalLawConfig["wilderness"], "mode" | "messages">) => resolveAreaMessages(config(), subject) as never;
 
@@ -101,9 +106,9 @@ export function App(props: AppProps) {
       model.selectRegion(candidate >= 0 ? candidate : null);
     }
   };
-  const openArea = (index: number | null, trigger?: HTMLElement) => {
-    model.setAreaDialog(true, index === null);
-    if (index !== null) {
+  const openArea = (kind: "wilderness" | "stageAreas" | "region", index: number | null, trigger?: HTMLElement) => {
+    model.setAreaDialog(true, kind);
+    if (kind === "region" && index !== null) {
       model.selectRegion(index);
       const region = config().regions[index];
       if (region?.map) setActiveMapId(region.map);
@@ -138,7 +143,7 @@ export function App(props: AppProps) {
   };
 
   const nextRegionName = () => {
-    const names = new Set([config().wilderness.name.toLocaleLowerCase(), ...config().regions.map((region) => region.name.toLocaleLowerCase())]);
+    const names = new Set([config().wilderness.name.toLocaleLowerCase(), config().stageAreas.name.toLocaleLowerCase(), ...config().regions.map((region) => region.name.toLocaleLowerCase())]);
     let number = config().regions.length + 1;
     while (names.has(`region ${number}`)) number += 1;
     return `Region ${number}`;
@@ -146,7 +151,14 @@ export function App(props: AppProps) {
 
   const applyAreaIntent = (intent: AreaIntent) => {
     if (intent.type === "fit-region") { mapController?.dispatch({ type: "fit-selected" }); return; }
-    commands.applyArea({ wilderness: editingWilderness(), index: model.state.selectedRegionIndex }, intent);
+    commands.applyArea(
+      editingWilderness()
+        ? { kind: "wilderness" }
+        : editingStageAreas()
+          ? { kind: "stageAreas" }
+          : { kind: "region", index: model.state.selectedRegionIndex! },
+      intent
+    );
     if (intent.type === "set-map") selectMap(intent.value);
   };
 
@@ -165,7 +177,9 @@ export function App(props: AppProps) {
   });
   const sidebarActions: SidebarActions = {
     selectRegion: (index) => { model.selectRegion(index); model.setWorkspaceView("map"); const region = config().regions[index]; if (region?.map) setActiveMapId(region.map); },
-    openWilderness: (trigger) => { openArea(null, trigger); }, openRegion: (index, trigger) => { openArea(index, trigger); },
+    openWilderness: (trigger) => { openArea("wilderness", null, trigger); },
+    openStageAreas: (trigger) => { openArea("stageAreas", null, trigger); },
+    openRegion: (index, trigger) => { openArea("region", index, trigger); },
     moveRegion: commands.moveRegion,
     duplicateRegion: (index) => { commands.duplicateRegion(index); },
     deleteRegion: (index, trigger) => { const region = config().regions[index]; if (region) openActionDialog({ kind: "delete-region", index, name: region.name }, trigger); },
@@ -175,7 +189,7 @@ export function App(props: AppProps) {
     deleteMode: (index, trigger) => {
       if (config().modes.length <= 1) return;
       const source = config().modes[index]; if (!source) return;
-      const used = [config().wilderness, ...config().regions].some((area) => area.mode === source.id);
+      const used = [config().wilderness, config().stageAreas, ...config().regions].some((area) => area.mode === source.id);
       openActionDialog({ kind: "delete-mode", index, used }, trigger);
     },
     selectMessage: (id) => { setSelectedMessage(id); model.setWorkspaceView("edit"); }
@@ -263,6 +277,6 @@ export function App(props: AppProps) {
         <div class="dialog-actions"><button type="button" class="button ghost" onClick={closeActionDialog}>Cancel</button><button type="button" classList={{ button: true, danger: actionDialogState()?.kind === "delete-region" || actionDialogState()?.kind === "delete-mode", primary: actionDialogState()?.kind === "new" || actionDialogState()?.kind === "duplicate-mode" }} onClick={confirmActionDialog}>{actionDialogState()?.kind === "duplicate-mode" ? "Duplicate" : actionDialogState()?.kind === "new" ? "Create" : "Confirm"}</button></div>
       </div>
     </dialog>
-    <dialog ref={areaDialog} class="region-editor-dialog" onClose={() => { model.setAreaDialog(false); }}><div class="region-editor-shell"><header class="region-editor-header"><div><p>{editingWilderness() ? "Wilderness settings" : "Region settings"}</p><h2>{selectedArea()?.name ?? "Region"}</h2></div><button ref={areaCloseButton} class="region-editor-close" type="button" aria-label="Close region settings" onClick={closeArea}><span class="hero-icon hero-icon-x-mark" aria-hidden="true" /></button></header><div class="region-editor-content"><Show when={areaDialogOpen() && selectedArea()}>{(current) => <AreaEditor area={current()} isRegion={!editingWilderness()} modes={config().modes} maps={MAPS} effectiveActions={effectiveActions(current())} effectiveCombat={effectiveCombat(current())} modeName={modeDefinition(current().mode, config()).name} modeMinimumLevel={effectiveMinimumLevel({ mode: current().mode }, config())} regionalCombatEnabled={config().regionalCombat.enabled} messages={messageCollection()} resolvedMessages={messageResolved(current())} overrideFor={(source, target) => quickCombatOverride(current(), source, target)} onChange={applyAreaIntent} />}</Show></div><footer class="region-editor-footer"><div class="dialog-actions" aria-label="Change history"><button class="icon-button history-button" type="button" aria-label="Undo" disabled={!snapshot().canUndo} onClick={() => { props.editorDocument.dispatch({ type: "undo" }); }}><span class="hero-icon hero-icon-arrow-uturn-left" aria-hidden="true" /></button><button class="icon-button history-button" type="button" aria-label="Redo" disabled={!snapshot().canRedo} onClick={() => { props.editorDocument.dispatch({ type: "redo" }); }}><span class="hero-icon hero-icon-arrow-uturn-right" aria-hidden="true" /></button></div><button class="button primary" type="button" onClick={closeArea}>Done</button></footer></div></dialog>
+    <dialog ref={areaDialog} class="region-editor-dialog" onClose={() => { model.setAreaDialog(false); }}><div class="region-editor-shell"><header class="region-editor-header"><div><p>{editingWilderness() ? "Wilderness settings" : editingStageAreas() ? "Stage Areas settings" : "Region settings"}</p><h2>{selectedArea()?.name ?? "Region"}</h2></div><button ref={areaCloseButton} class="region-editor-close" type="button" aria-label="Close area settings" onClick={closeArea}><span class="hero-icon hero-icon-x-mark" aria-hidden="true" /></button></header><div class="region-editor-content"><Show when={areaDialogOpen() && selectedArea()}>{(current) => <AreaEditor area={current()} kind={editingWilderness() ? "wilderness" : editingStageAreas() ? "stageAreas" : "region"} modes={config().modes} maps={MAPS} effectiveActions={effectiveActions(current())} effectiveCombat={effectiveCombat(current())} modeName={modeDefinition(current().mode, config()).name} modeMinimumLevel={effectiveMinimumLevel({ mode: current().mode }, config())} regionalCombatEnabled={config().regionalCombat.enabled} messages={messageCollection()} resolvedMessages={messageResolved(current())} overrideFor={(source, target) => quickCombatOverride(current(), source, target)} onChange={applyAreaIntent} />}</Show></div><footer class="region-editor-footer"><div class="dialog-actions" aria-label="Change history"><button class="icon-button history-button" type="button" aria-label="Undo" disabled={!snapshot().canUndo} onClick={() => { props.editorDocument.dispatch({ type: "undo" }); }}><span class="hero-icon hero-icon-arrow-uturn-left" aria-hidden="true" /></button><button class="icon-button history-button" type="button" aria-label="Redo" disabled={!snapshot().canRedo} onClick={() => { props.editorDocument.dispatch({ type: "redo" }); }}><span class="hero-icon hero-icon-arrow-uturn-right" aria-hidden="true" /></button></div><button class="button primary" type="button" onClick={closeArea}>Done</button></footer></div></dialog>
   </>;
 }

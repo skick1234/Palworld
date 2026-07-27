@@ -40,15 +40,23 @@ released, or unloaded.
 - `messages`: optional global player-message defaults.
 - `modes`: required ordered array containing 1 to 128 complete mode definitions.
 - `wilderness`: required named Wilderness.
+- `stageAreas`: required shared policy for every Palworld stage area.
 - `regions`: optional ordered array of polygon areas.
 
 Unknown fields are rejected. A failed hot reload leaves the previous valid configuration active.
 
 ## Areas and overlap order
 
-An **area** is either wilderness or a region.
+An **area** is Wilderness, the shared Stage Areas policy, or a polygon Region.
 
-Wilderness applies to every point that is not inside an enabled region. A document may contain at most 1,024 raw regions. Every region requires a unique, non-empty `name` and a polygon with 3 to 1,024 raw `[X, Y]` points; all raw polygons together may contain at most 65,536 points. A final point equal to the first may explicitly close a polygon, counts toward both limits, and is removed during normalization. Other consecutive duplicate points are rejected.
+Stage Areas applies with fixed, exclusive priority whenever Palworld identifies
+an actor as inside a Dungeon, Boss Battle, Arena, Room, or Raid Boss stage. In
+that case polygon Regions and Wilderness are not evaluated, even when the
+stage's hidden world coordinates overlap a Region. Configuration Version 3 has
+one shared Stage Areas policy; it does not configure stage types or instances
+separately.
+
+Wilderness applies to every non-stage point that is not inside an enabled region. A document may contain at most 1,024 raw regions. Every region requires a unique, non-empty `name` and a polygon with 3 to 1,024 raw `[X, Y]` points; all raw polygons together may contain at most 65,536 points. A final point equal to the first may explicitly close a polygon, counts toward both limits, and is removed during normalization. Other consecutive duplicate points are rejected.
 
 Regions are evaluated in array order. When enabled regions overlap, the **last matching region wins**. There is no hidden numeric priority:
 
@@ -96,7 +104,7 @@ on polygon coordinates and file order.
 Rules Studio owns the new-document starter definitions named Safe, PvE, and
 PvP. The current-version parser has no fallback definitions and attaches no
 reserved meaning to those IDs. A server may replace them with its own modes.
-Every Wilderness and Region `mode` must reference an existing ID.
+Every Wilderness, Stage Areas, and Region `mode` must reference an existing ID.
 
 A combat event uses only the target's current physical area. The source actor's
 kind selects the combat row, but source position, projectile launch position,
@@ -144,7 +152,7 @@ Editing or switching a mode never removes an area override.
 
 ## Combat overrides
 
-Combat overrides are ordered and applied after the mode. Later matching entries win. Rules Studio presents the resulting relationships as an editable matrix. When a matrix cell is changed, grouped and bidirectional entries are normalized into deterministic one-source, one-target entries while preserving every effective relationship. A cell set to **Default** removes its explicit entry and restores the selected mode preset for that relationship. Wilderness and each region may contain at most 128 raw combat entries; the matrix editor needs at most 48.
+Combat overrides are ordered and applied after the mode. Later matching entries win. Rules Studio presents the resulting relationships as an editable matrix. When a matrix cell is changed, grouped and bidirectional entries are normalized into deterministic one-source, one-target entries while preserving every effective relationship. A cell set to **Default** removes its explicit entry and restores the selected mode preset for that relationship. Wilderness, Stage Areas, and each Region may contain at most 128 raw combat entries; the matrix editor needs at most 48.
 
 ```json
 "combat": [
@@ -187,8 +195,9 @@ The Version 2 contract rejects `damage` multipliers. When a Version 1 file is mi
 
 ## Level requirements
 
-Every mode defines a nullable minimum player level. A Region inherits that
-setting when it omits `minimumLevel`, or replaces it with an explicit value:
+Every mode defines a nullable minimum player level. Wilderness and Stage Areas
+inherit it. A Region inherits that setting when it omits `minimumLevel`, or
+replaces it with an explicit value:
 
 ```json
 "minimumLevel": null
@@ -300,10 +309,12 @@ remains frozen. Software `0.2.0` uses Configuration Version 2, which adds one
 explicit regional-combat authority switch and binary combat overrides. Version 2
 publicly removes positive scaling, diagnostic damage modes, and separate target
 filtering controls. Configuration Version 3 replaces both Fast Travel booleans
-with `"all"`, `"baseOnly"`, and `"none"` policies and makes modes
-configuration-owned. The Version 2→3 migration materializes the complete
-starter modes, moves old display names into `mode.name`, removes reported
-Region colors, and merges old PvP-warning outputs into `regionChanged`.
+with `"all"`, `"baseOnly"`, and `"none"` policies, makes modes
+configuration-owned, and adds one shared Stage Areas policy with fixed priority
+over Regions and Wilderness. The Version 2→3 migration materializes the
+complete starter modes, moves old display names into `mode.name`, removes
+reported Region colors, merges old PvP-warning outputs into `regionChanged`,
+and copies Wilderness into a uniquely named Stage Areas fallback.
 Pre-release Version 3 drafts are not accepted.
 
 Rules Studio and the DLL migrate every released older Configuration Version forward through each adjacent version. The declared source and every intermediate result must validate before the migrated document can be used. A document without `version` is reported and treated as version 1 only when it passes the complete version-1 contract. Invalid, unknown, and newer versions are rejected; reverse migration is not supported.
@@ -341,7 +352,7 @@ Defaults are suitable for most dedicated servers:
 
 The static Rules Studio under `site/pallaw/` imports and exports this exact
 format. Its Modes tab owns ordered mode definitions, and its Regions tab pins
-Wilderness before polygon Regions. Message localization contains Player Action
+Wilderness followed by Stage Areas before polygon Regions. Message localization contains Player Action
 names; mode names are edited on the mode itself. The editor makes no network
 requests with configuration data.
 
