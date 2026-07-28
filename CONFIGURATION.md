@@ -8,7 +8,7 @@ Pal/Binaries/Win64/Mods/PalLaw/PalLaw.json
 
 The file is plain JSON. JSON is used because the DLL and the browser editor can share the same data model, the bundled JSON Schema can validate it, and no additional parser dependency is required in the production mod.
 
-Configuration Version 3 accepts UTF-8 with or without a UTF-8 BOM. The raw file is limited to 4 MiB inclusive, the BOM counts toward that limit, JSON container nesting is limited to 32, and duplicate object keys are rejected at every depth before object construction. UTF-16, UTF-32, and invalid UTF-8 are rejected.
+Configuration Version 4 accepts UTF-8 with or without a UTF-8 BOM. The raw file is limited to 4 MiB inclusive, the BOM counts toward that limit, JSON container nesting is limited to 32, and duplicate object keys are rejected at every depth before object construction. UTF-16, UTF-32, and invalid UTF-8 are rejected.
 
 Every current document carries its ordered mode definitions. Rules Studio creates
 the Safe, PvE, and PvP starter modes for a new document; they are ordinary
@@ -34,7 +34,7 @@ released, or unloaded.
 ## Top-level fields
 
 - `$schema`: optional relative path used by editors.
-- `version`: required and currently `3`.
+- `version`: required and currently `4`.
 - `regionalCombat`: optional master combat-authority control. It defaults to enabled.
 - `settings`: optional runtime tuning.
 - `messages`: optional global player-message defaults.
@@ -52,7 +52,7 @@ An **area** is Wilderness, the shared Stage Areas policy, or a polygon Region.
 Stage Areas applies with fixed, exclusive priority whenever Palworld identifies
 an actor as inside a Dungeon, Boss Battle, Arena, Room, or Raid Boss stage. In
 that case polygon Regions and Wilderness are not evaluated, even when the
-stage's hidden world coordinates overlap a Region. Configuration Version 3 has
+stage's hidden world coordinates overlap a Region. Configuration Version 4 has
 one shared Stage Areas policy; it does not configure stage types or instances
 separately.
 
@@ -139,13 +139,21 @@ Supported actions:
 - `fly`: remain on a flying mount after the configured grace period
 - `editSign`
 - `editLock`
-- `fastTravelDeparture`: control trips started while physically inside the area with `"all"`, `"baseOnly"`, or `"none"`
+- `fastTravelDeparture`: control the route shape for trips started while physically inside the area with `"all"`, `"baseToAll"`, `"baseToBase"`, `"allToBase"`, or `"none"`
 - `fastTravelArrival`: control landing destinations with `"all"`, `"baseOnly"`, or `"none"`
 - `decay`
 
-For either direction, `"baseOnly"` admits only trips whose destination is
-positively identified by Palworld as a base camp; it never guesses from
-coordinate proximity. `"none"` disables that direction.
+Departure route policies mean:
+
+- `"all"`: any departure point to any destination
+- `"baseToAll"`: a Palworld base camp to any destination
+- `"baseToBase"`: a Palworld base camp to a Palworld base camp
+- `"allToBase"`: any departure point to a Palworld base camp
+- `"none"`: no departure
+
+The origin area's Departure policy is evaluated first. The destination area's
+Arrival policy is then evaluated independently, so an otherwise valid route
+can still be rejected by the new area's `"baseOnly"` or `"none"` policy.
 
 An area action set to **Default** is omitted and inherits its selected mode.
 Editing or switching a mode never removes an area override.
@@ -315,7 +323,10 @@ over Regions and Wilderness. The Version 2→3 migration materializes the
 complete starter modes, moves old display names into `mode.name`, removes
 reported Region colors, merges old PvP-warning outputs into `regionChanged`,
 and copies Wilderness into a uniquely named Stage Areas fallback.
-Pre-release Version 3 drafts are not accepted.
+Configuration Version 4 replaces Departure `"baseOnly"` with explicit route
+policies. Version 3 Departure `"baseOnly"` migrates to `"baseToAll"`; Arrival
+`"baseOnly"` is unchanged. Pre-release Version 3 and Version 4 drafts are not
+accepted.
 
 Rules Studio and the DLL migrate every released older Configuration Version forward through each adjacent version. The declared source and every intermediate result must validate before the migrated document can be used. A document without `version` is reported and treated as version 1 only when it passes the complete version-1 contract. Invalid, unknown, and newer versions are rejected; reverse migration is not supported.
 

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "PalLaw.schema.json",
+  "$id": "PalLaw.v4.schema.json",
   "title": "PalLaw Configuration Version 4",
   "type": "object",
   "additionalProperties": false,

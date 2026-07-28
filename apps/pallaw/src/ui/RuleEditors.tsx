@@ -1,12 +1,12 @@
 import { For, createSignal } from "solid-js";
-import { ACTIONS, ACTORS, FAST_TRAVEL_POLICIES } from "../domain/rules";
+import { ACTIONS, ACTORS, fastTravelPolicies } from "../domain/rules";
 
-export type ActionValue = boolean | "all" | "baseOnly" | "none";
+export type ActionValue = boolean | "all" | "baseOnly" | "baseToAll" | "baseToBase" | "allToBase" | "none";
 export type ActionValues = Readonly<Record<string, ActionValue | undefined>>;
 
-function actionLabel(value: ActionValue | undefined): string {
+function actionLabel(actionId: string, value: ActionValue | undefined): string {
   if (typeof value === "boolean") return value ? "Allow" : "Deny";
-  return FAST_TRAVEL_POLICIES.find((policy) => policy.id === value)?.label ?? "Deny";
+  return fastTravelPolicies(actionId).find((policy) => policy.id === value)?.label ?? "Deny";
 }
 
 export function ActionsEditor(props: {
@@ -19,12 +19,12 @@ export function ActionsEditor(props: {
   const nextValue = (id: string, fastTravel: boolean): ActionValue | null => {
     const raw = props.actions[id];
     if (props.isMode && fastTravel) {
-      const values = FAST_TRAVEL_POLICIES.map((policy) => policy.id as ActionValue);
+      const values = fastTravelPolicies(id).map((policy) => policy.id as ActionValue);
       return values[(values.indexOf(raw ?? "none") + 1) % values.length]!;
     }
     if (props.isMode) return !Boolean(raw);
     if (fastTravel) {
-      const values: Array<ActionValue | null> = [null, ...FAST_TRAVEL_POLICIES.map((policy) => policy.id as ActionValue)];
+      const values: Array<ActionValue | null> = [null, ...fastTravelPolicies(id).map((policy) => policy.id as ActionValue)];
       return values[(values.indexOf(raw ?? null) + 1) % values.length]!;
     }
     if (raw === undefined) return true;
@@ -35,8 +35,8 @@ export function ActionsEditor(props: {
     <div class="action-matrix-grid"><For each={ACTIONS}>{(action) => {
       const raw = () => props.actions[action.id];
       const effective = () => props.effective[action.id];
-      const rawLabel = () => raw() === undefined ? "Default" : actionLabel(raw());
-      const effectiveLabel = () => actionLabel(effective());
+      const rawLabel = () => raw() === undefined ? "Default" : actionLabel(action.id, raw());
+      const effectiveLabel = () => actionLabel(action.id, effective());
       const accessible = () => props.isMode
         ? `${action.label}: ${effectiveLabel()}. Activate to change.`
         : raw() === undefined
