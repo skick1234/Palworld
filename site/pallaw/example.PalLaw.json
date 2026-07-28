@@ -66,11 +66,13 @@
   },
   "wilderness": {
     "name": "Wilderness",
-    "mode": "pve"
+    "mode": "pve",
+    "schedules": ["weekend-pvp"]
   },
   "stageAreas": {
     "name": "Stage Areas",
-    "mode": "pve"
+    "mode": "pve",
+    "schedules": []
   },
   "regions": [
     {
@@ -165,6 +167,26 @@
           ],
           "target": "environment",
           "allow": false
+        }
+      ]
+    }
+  ],
+  "schedules": [
+    {
+      "id": "weekend-pvp",
+      "name": "Weekend PvP",
+      "enabled": true,
+      "days": ["sat", "sun"],
+      "startTime": "18:00",
+      "endTime": "22:00",
+      "mode": "pvp",
+      "announcements": [
+        {
+          "enabled": true,
+          "relativeTo": "start",
+          "minutesBefore": 15,
+          "globalChat": { "enabled": true, "text": "{schedule} starts in {minutes} minutes." },
+          "serverNotice": { "enabled": true, "text": "{schedule} starts soon" }
         }
       ]
     }

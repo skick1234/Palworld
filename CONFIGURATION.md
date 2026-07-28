@@ -38,6 +38,7 @@ released, or unloaded.
 - `regionalCombat`: optional master combat-authority control. It defaults to enabled.
 - `settings`: optional runtime tuning.
 - `messages`: optional global player-message defaults.
+- `schedules`: optional ordered array of recurring UTC mode windows and broadcasts.
 - `modes`: required ordered array containing 1 to 128 complete mode definitions.
 - `wilderness`: required named Wilderness.
 - `stageAreas`: required shared policy for every Palworld stage area.
@@ -88,6 +89,37 @@ Each region supports:
 `map` is editor metadata. A region has no color field: its effective mode is the
 sole color authority for badges and polygons. Runtime area selection is based
 on polygon coordinates and file order.
+
+## Schedules
+
+`schedules` contains at most 64 recurring weekly entries. Each entry uses selected UTC weekday IDs and `HH:mm` UTC times. Rules Studio displays and edits the equivalent computer-local weekday and time, then writes UTC values back to the file.
+
+An earlier `endTime` means the following UTC day. An `endTime` equal to `startTime` means a 24-hour window, so selecting all seven weekdays produces continuous activity. A schedule that assigns a `mode` requires an end time and must be referenced by at least one Area's `schedules` list. A schedule without a mode is announcement-only and cannot be assigned to an Area.
+
+The top-level Schedule array defines takeover precedence, matching Regions: when active mode windows overlap in the same Area, the later Schedule wins. Area `schedules` lists express membership only; their local ID order does not affect precedence. Every due announcement still runs independently, including announcements owned by a mode window that does not win the takeover.
+
+```json
+"schedules": [
+  {
+    "id": "weekend-pvp",
+    "name": "Weekend PvP",
+    "days": ["sat", "sun"],
+    "startTime": "18:00",
+    "endTime": "22:00",
+    "mode": "pvp",
+    "announcements": [
+      {
+        "relativeTo": "start",
+        "minutesBefore": 15,
+        "globalChat": { "enabled": true, "text": "{schedule} starts in {minutes} minutes." },
+        "serverNotice": { "enabled": true, "text": "{schedule} starts soon" }
+      }
+    ]
+  }
+]
+```
+
+Schedules and announcement rows have no delivery identity or deduplication. Duplicate announcement rows are valid and each is delivered in list order. At a boundary shared by adjacent 24-hour occurrences, due end-relative and start-relative rows both run. Disabling a Schedule preserves its array position, mode, Area assignments, and announcement rows.
 
 ## Modes
 

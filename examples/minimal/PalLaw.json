@@ -1,6 +1,6 @@
 {
   "$schema": "../../site/pallaw/PalLaw.schema.json",
-  "version": 3,
+  "version": 4,
   "regionalCombat": {
     "enabled": false
   },
@@ -8,6 +8,7 @@
     "worldRules": true,
     "debugLogging": false
   },
+  "schedules": [],
   "modes": [
     {
       "id": "pve",

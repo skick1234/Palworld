@@ -1,4 +1,4 @@
-import { For, createSignal } from "solid-js";
+import { For, Show, createSignal } from "solid-js";
 import { ACTIONS, ACTORS, fastTravelPolicies } from "../domain/rules";
 
 export type ActionValue = boolean | "all" | "baseOnly" | "baseToAll" | "baseToBase" | "allToBase" | "none";
@@ -62,6 +62,16 @@ export function ActionsEditor(props: {
 export type CombatMatrixValue = Readonly<Record<string, Readonly<Record<string, boolean | undefined>> | undefined>>;
 export type CombatOverride = "default" | "allow" | "deny";
 
+interface MatrixActorDefinition {
+  readonly name: string;
+  readonly text: string;
+}
+
+interface MatrixRelationshipDescription {
+  readonly source: MatrixActorDefinition;
+  readonly target?: MatrixActorDefinition;
+}
+
 export function CombatMatrix(props: {
   readonly matrix: CombatMatrixValue;
   readonly isMode: boolean;
@@ -70,25 +80,36 @@ export function CombatMatrix(props: {
   readonly onChange: (source: string, target: string, value: CombatOverride) => void;
 }) {
   const sources = ACTORS.filter((actor) => !actor.targetOnly);
-  const [description, setDescription] = createSignal<{ title: string; text: string }>({ title: "Actor definitions", text: "Hover or focus a header or matrix button to see what it includes." });
+  const defaultDescription: MatrixRelationshipDescription = {
+    source: { name: "Rows", text: "deal damage. Hover or focus a row header or matrix button to inspect the source." },
+    target: { name: "Columns", text: "receive damage. Hover or focus a column header or matrix button to inspect the target." }
+  };
+  const [description, setDescription] = createSignal<MatrixRelationshipDescription>(defaultDescription);
   const next = (value: CombatOverride): CombatOverride => value === "default" ? "allow" : value === "allow" ? "deny" : "default";
-  const describe = (actor: { label: string; description?: string }) => { setDescription({ title: actor.label, text: actor.description ?? actor.label }); };
+  const definition = (actor: { label: string; description?: string }): MatrixActorDefinition => ({ name: actor.label, text: actor.description ?? actor.label });
+  const describeSource = (source: { label: string; description?: string }) => { setDescription({ source: definition(source), target: defaultDescription.target }); };
+  const describeTarget = (target: { label: string; description?: string }) => { setDescription({ source: defaultDescription.source, target: definition(target) }); };
+  const describeRelationship = (source: { id: string; label: string; description?: string }, target: { id: string; label: string; description?: string }) => {
+    setDescription(source.id === target.id
+      ? { source: definition(source) }
+      : { source: definition(source), target: definition(target) });
+  };
   return <>
     <div class="matrix-toolbar"><p>Rows deal damage. Columns receive it.{props.isMode ? "" : ` Default follows the ${props.modeName ?? "selected"} mode.`}</p></div>
     <div class="matrix-wrap"><table class="combat-matrix">
-      <thead><tr><th class="matrix-corner" scope="col"><span class="matrix-corner-label" tabindex="0" aria-label="Targets run across columns. Sources run down rows." onMouseEnter={() => { setDescription({ title: "Matrix directions", text: "Rows are damage sources. Columns are damage targets." }); }} onFocus={() => { setDescription({ title: "Matrix directions", text: "Rows are damage sources. Columns are damage targets." }); }}><span><strong>Target</strong><span class="hero-icon hero-icon-arrow-right matrix-axis-icon" aria-hidden="true" /></span><span><strong>Source</strong><span class="hero-icon hero-icon-arrow-down matrix-axis-icon" aria-hidden="true" /></span></span></th>
-        <For each={ACTORS}>{(target) => <th scope="col"><span class="matrix-actor-label" tabindex="0" aria-label={`${target.label}. ${target.description}`} onMouseEnter={() => { describe(target); }} onFocus={() => { describe(target); }}>{target.matrixLabel ?? target.label}</span></th>}</For>
+      <thead><tr><th class="matrix-corner" scope="col"><span class="matrix-corner-label" tabindex="0" aria-label="Targets run across columns. Sources run down rows." onMouseEnter={() => { setDescription(defaultDescription); }} onFocus={() => { setDescription(defaultDescription); }}><span><strong>Target</strong><span class="hero-icon hero-icon-arrow-right matrix-axis-icon" aria-hidden="true" /></span><span><strong>Source</strong><span class="hero-icon hero-icon-arrow-down matrix-axis-icon" aria-hidden="true" /></span></span></th>
+        <For each={ACTORS}>{(target) => <th scope="col"><span class="matrix-actor-label" tabindex="0" aria-label={`${target.label}. ${target.description}`} onMouseEnter={() => { describeTarget(target); }} onFocus={() => { describeTarget(target); }}>{target.matrixLabel ?? target.label}</span></th>}</For>
       </tr></thead>
-      <tbody><For each={sources}>{(source, row) => <tr><th scope="row"><span class="matrix-actor-label" tabindex="0" aria-label={`${source.label}. ${source.description}`} onMouseEnter={() => { describe(source); }} onFocus={() => { describe(source); }}>{source.matrixLabel ?? source.label}</span></th>
+      <tbody><For each={sources}>{(source, row) => <tr><th scope="row"><span class="matrix-actor-label" tabindex="0" aria-label={`${source.label}. ${source.description}`} onMouseEnter={() => { describeSource(source); }} onFocus={() => { describeSource(source); }}>{source.matrixLabel ?? source.label}</span></th>
         <For each={ACTORS}>{(target, column) => {
           const effective = () => props.matrix[source.id]?.[target.id] === true;
           const raw = () => props.isMode ? (effective() ? "allow" : "deny") : props.overrideFor(source.id, target.id);
           const primary = () => !props.isMode && raw() === "default" ? "Default" : effective() ? "Allow" : "Deny";
           const accessible = () => `${source.label} to ${target.label}: ${raw() === "default" ? `Default, effective ${effective() ? "Allow" : "Deny"}` : `${effective() ? "Allow" : "Deny"} override`}. Activate to change.`;
-          return <td><button type="button" classList={{ "matrix-cell": true, allowed: effective(), denied: !effective(), "is-default": props.isMode || raw() === "default", "is-override": !props.isMode && raw() !== "default" }} aria-label={accessible()} data-combat-row={row()} data-combat-column={column()} onMouseEnter={() => { setDescription({ title: `${source.label} to ${target.label}`, text: `${source.description} ${target.description}` }); }} onFocus={() => { setDescription({ title: `${source.label} to ${target.label}`, text: `${source.description} ${target.description}` }); }} onClick={() => { props.onChange(source.id, target.id, props.isMode ? (effective() ? "deny" : "allow") : next(raw())); }}><span class="matrix-cell-primary">{primary()}</span>{!props.isMode && <span class="matrix-cell-secondary">{raw() === "default" ? (effective() ? "Allow" : "Deny") : "Override"}</span>}</button></td>;
+          return <td><button type="button" classList={{ "matrix-cell": true, allowed: effective(), denied: !effective(), "is-default": props.isMode || raw() === "default", "is-override": !props.isMode && raw() !== "default" }} aria-label={accessible()} data-combat-row={row()} data-combat-column={column()} onMouseEnter={() => { describeRelationship(source, target); }} onFocus={() => { describeRelationship(source, target); }} onClick={() => { props.onChange(source.id, target.id, props.isMode ? (effective() ? "deny" : "allow") : next(raw())); }}><span class="matrix-cell-primary">{primary()}</span>{!props.isMode && <span class="matrix-cell-secondary">{raw() === "default" ? (effective() ? "Allow" : "Deny") : "Override"}</span>}</button></td>;
         }}</For>
       </tr>}</For></tbody>
     </table></div>
-    <div class="matrix-actor-description"><strong>{description().title}</strong><span>{description().text}</span></div>
+    <div class="matrix-actor-description"><div class="matrix-definition-list"><strong>{description().source.name}</strong><span>{description().source.text}</span><Show when={description().target}>{(target) => <><strong>{target().name}</strong><span>{target().text}</span></>}</Show></div></div>
   </>;
 }

@@ -55,6 +55,10 @@ export interface PalLawConfigurationVersion4 {
   settings?: Settings;
   messages?: GlobalMessages;
   /**
+   * Ordered recurring schedules. When active mode windows overlap in one Area, the later schedule wins.
+   */
+  schedules?: Schedule[];
+  /**
    * Ordered configuration-owned area modes. Array position is display order.
    *
    * @minItems 1
@@ -85,6 +89,30 @@ export interface GlobalMessages {
   regionChanged?: MessageEvent;
   actionDenied?: MessageEvent;
   levelDenied?: MessageEvent;
+}
+export interface Schedule {
+  id: string;
+  name: DisplayName;
+  enabled?: boolean;
+  days: ("mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun")[];
+  startTime: string;
+  /**
+   * Same as startTime means a 24-hour window; an earlier time means the following UTC day.
+   */
+  endTime?: string;
+  mode?: ModeId;
+  announcements?: ScheduleAnnouncement[];
+}
+export interface ScheduleAnnouncement {
+  enabled?: boolean;
+  relativeTo: "start" | "end";
+  minutesBefore: number;
+  globalChat?: ScheduleOutput;
+  serverNotice?: ScheduleOutput;
+}
+export interface ScheduleOutput {
+  enabled: boolean;
+  text: string;
 }
 export interface ActionNames {
   build?: DisplayName;
@@ -147,6 +175,7 @@ export interface MessageOverrides {
 export interface Wilderness {
   name: DisplayName;
   mode: ModeId;
+  schedules?: string[];
   actions?: Actions;
   combat?: CombatOverrides;
   messages?: MessageOverrides;
@@ -161,6 +190,7 @@ export interface Region {
   name: DisplayName;
   enabled?: boolean;
   mode: ModeId;
+  schedules?: string[];
   minimumLevel?: number;
   map?: string;
   /**

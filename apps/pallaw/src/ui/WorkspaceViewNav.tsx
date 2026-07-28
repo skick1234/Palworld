@@ -11,6 +11,7 @@ interface WorkspaceViewNavProps {
 function availableViews(section: EditorSection, messageLabel = "Message"): ReadonlyArray<readonly [WorkspaceView, string]> {
   if (section === "regions") return [["list", "Regions"], ["map", "Map"]];
   if (section === "modes") return [["list", "Modes"], ["edit", "Mode"]];
+  if (section === "schedules") return [["list", "Schedules"], ["edit", "Schedule"]];
   if (section === "messages") return [["list", "Events"], ["edit", messageLabel]];
   return [];
 }

@@ -26,10 +26,35 @@ export interface GlobalMessages {
 export interface AreaValue {
   name: string;
   mode: string;
+  schedules: string[];
   actions: Record<string, ActionValue | undefined>;
   combat: Array<{ source: string | string[]; target: string | string[]; allow?: boolean; bidirectional?: boolean }>;
   messages: Record<string, EventMessage>;
   _modeDefinition?: ModeValue;
+}
+
+export interface ScheduleOutput {
+  enabled: boolean;
+  text: string;
+}
+
+export interface ScheduleAnnouncementValue {
+  enabled: boolean;
+  relativeTo: "start" | "end";
+  minutesBefore: number;
+  globalChat: ScheduleOutput;
+  serverNotice: ScheduleOutput;
+}
+
+export interface ScheduleValue {
+  id: string;
+  name: string;
+  enabled: boolean;
+  days: string[];
+  startTime: string;
+  endTime: string | null;
+  mode: string | null;
+  announcements: ScheduleAnnouncementValue[];
 }
 
 export interface RegionValue extends AreaValue {
@@ -65,6 +90,7 @@ export interface PalLawConfigValue {
   regionalCombat: { enabled: boolean };
   settings: RuntimeSettingsValue;
   messages: GlobalMessages;
+  schedules: ScheduleValue[];
   modes: ModeValue[];
   wilderness: AreaValue;
   stageAreas: AreaValue;

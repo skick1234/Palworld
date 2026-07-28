@@ -16,8 +16,10 @@ import {
 import type { JsonObject, MigrationDefinition, MigrationReportEntry } from "./configuration-migrations";
 import type {
   ActionValue, AlertMessage, AreaValue, CombatOverride, EventMessage, GlobalMessages,
-  ModeValue, PalLawConfigValue, Point, RegionValue, RuntimeSettingsValue
+  ModeValue, PalLawConfigValue, Point, RegionValue, RuntimeSettingsValue,
+  ScheduleAnnouncementValue, ScheduleOutput, ScheduleValue
 } from "./types";
+import { ISO_MINUTE_TIME, WEEKDAYS, parseMinuteOfDay, scheduleDurationMinutes } from "./schedules";
 
 type JsonRecord = Record<string, unknown>;
 type CombatMatrix = Record<string, Record<string, boolean | undefined>>;
@@ -253,6 +255,8 @@ const ACTION_IDS = new Set(ACTIONS.map((entry) => entry.id));
 const MESSAGE_IDS = new Set(MESSAGE_EVENTS.map((entry) => entry.id));
 const ALERT_PRESENTATION_IDS = new Set(ALERT_PRESENTATIONS.map((entry) => entry.id));
 const ALERT_TONE_IDS = new Set(ALERT_TONES.map((entry) => entry.id));
+const WEEKDAY_IDS = new Set(WEEKDAYS.map((entry) => entry.id));
+const SCHEDULE_PLACEHOLDERS = new Set(["schedule", "startTime", "endTime", "minutes", "mode", "areas"]);
 const EPSILON = 1e-6;
 
 export function clone<T>(value: T): T {
@@ -287,10 +291,12 @@ export function createDefaultConfig(): PalLawConfigValue {
     regionalCombat: clone(DEFAULT_REGIONAL_COMBAT),
     settings: clone(DEFAULT_SETTINGS),
     messages: clone(DEFAULT_MESSAGES),
+    schedules: [],
     modes: STARTER_MODES.map(createStarterMode),
     wilderness: {
       name: "Wilderness",
       mode: "pve",
+      schedules: [],
       actions: {},
       combat: [],
       messages: {}
@@ -298,6 +304,7 @@ export function createDefaultConfig(): PalLawConfigValue {
     stageAreas: {
       name: "Stage Areas",
       mode: "pve",
+      schedules: [],
       actions: {},
       combat: [],
       messages: {}
@@ -376,8 +383,8 @@ export function normalizeMessage(value: unknown, base: EventMessage): EventMessa
 }
 
 export function enabledMessageOutputCount(message: EventMessage | null | undefined): number {
-  return Number(Boolean(message?.chat?.enabled)) + ALERT_PRESENTATIONS.reduce(
-    (count, { id }) => count + Number(Boolean(message?.alerts?.[id]?.enabled)),
+  return Number(Boolean(message?.chat?.enabled && hasVisibleMessageText(message.chat.text))) + ALERT_PRESENTATIONS.reduce(
+    (count, { id }) => count + Number(Boolean(message?.alerts?.[id]?.enabled && hasVisibleMessageText(message.alerts[id]?.text))),
     0
   );
 }
@@ -450,11 +457,42 @@ function normalizeArea(value: unknown, fallbackName = "Region"): AreaValue {
   return {
     name: text(source.name, fallbackName),
     mode,
+    schedules: Array.isArray(source.schedules) ? source.schedules.filter((entry): entry is string => typeof entry === "string") : [],
     actions: normalizeActions(source.actions),
     combat: normalizeCombat(source.combat),
     messages: source.messages && typeof source.messages === "object" && !Array.isArray(source.messages)
       ? clone(source.messages) as Record<string, EventMessage>
       : {}
+  };
+}
+
+function normalizeScheduleOutput(value: unknown): ScheduleOutput {
+  const source = isPlainObject(value) ? value : {};
+  return { enabled: boolean(source.enabled, false), text: text(source.text) };
+}
+
+function normalizeScheduleAnnouncement(value: unknown): ScheduleAnnouncementValue {
+  const source = isPlainObject(value) ? value : {};
+  return {
+    enabled: boolean(source.enabled, true),
+    relativeTo: source.relativeTo === "end" ? "end" : "start",
+    minutesBefore: Number.isInteger(Number(source.minutesBefore)) ? Number(source.minutesBefore) : 0,
+    globalChat: normalizeScheduleOutput(source.globalChat),
+    serverNotice: normalizeScheduleOutput(source.serverNotice)
+  };
+}
+
+function normalizeSchedule(value: unknown, index: number): ScheduleValue {
+  const source = isPlainObject(value) ? value : {};
+  return {
+    id: text(source.id),
+    name: text(source.name, `Schedule ${index + 1}`),
+    enabled: boolean(source.enabled, true),
+    days: Array.isArray(source.days) ? source.days.filter((entry): entry is string => typeof entry === "string") : [],
+    startTime: text(source.startTime, "00:00"),
+    endTime: typeof source.endTime === "string" ? source.endTime : null,
+    mode: typeof source.mode === "string" ? source.mode : null,
+    announcements: Array.isArray(source.announcements) ? source.announcements.map(normalizeScheduleAnnouncement) : []
   };
 }
 
@@ -540,6 +578,7 @@ export function hydrateConfig(value: unknown): PalLawConfigValue {
       : finite(config.settings[key], fallback);
   }
   config.messages = normalizeMessages(source.messages, DEFAULT_MESSAGES, true);
+  config.schedules = Array.isArray(source.schedules) ? source.schedules.map(normalizeSchedule) : [];
   config.modes = Array.isArray(source.modes) ? source.modes.map(normalizeMode) : [];
   config.wilderness = normalizeArea(source.wilderness, "Wilderness");
   config.stageAreas = normalizeArea(source.stageAreas, "Stage Areas");
@@ -670,6 +709,20 @@ export function setQuickCombatOverride(area: AreaValue, source: string, target: 
 export function deriveFeatureSummary(input: unknown) {
   const config = hydrateConfig(input);
   const areas = [config.wilderness, config.stageAreas, ...config.regions.filter((region) => region.enabled !== false)];
+  for (const schedule of config.schedules) {
+    if (!schedule.enabled || !schedule.mode) continue;
+    const definition = modeDefinition(schedule.mode, config) as ModeValue;
+    if (!definition) continue;
+    areas.push({
+      name: schedule.name,
+      mode: definition.id,
+      schedules: [],
+      actions: definition.actions,
+      combat: [],
+      messages: definition.messages,
+      _modeDefinition: definition
+    });
+  }
   const owned = new Set(["player", "partnerPal", "basePal", "baseStructure"]);
   let enablesRegionalPlayerDamage = false;
   let characterPolicyNonVanilla = false;
@@ -824,8 +877,8 @@ function validateMessage(message: EventMessage, context: string, errors: ErrorSi
   if (!Number.isFinite(Number(message.cooldownSeconds)) || message.cooldownSeconds < 0 || message.cooldownSeconds > 300) {
     errors.push(`${context}.cooldownSeconds must be between 0 and 300.`);
   }
-  if (message.chat?.enabled && (!message.chat.text || message.chat.text.length > 512)) {
-    errors.push(`${context}.chat.text must contain 1 to 512 characters when chat is enabled.`);
+  if (message.chat?.enabled && message.chat.text.length > 512) {
+    errors.push(`${context}.chat.text must contain at most 512 characters when chat is enabled.`);
   }
   for (const { id } of ALERT_PRESENTATIONS) {
     const alert = message.alerts?.[id];
@@ -835,8 +888,8 @@ function validateMessage(message: EventMessage, context: string, errors: ErrorSi
     if (id === "activity" && Object.hasOwn(alert || {}, "tone")) {
       errors.push(`${context}.alerts.activity.tone is not supported.`);
     }
-    if (alert?.enabled && (!alert.text || alert.text.length > 256)) {
-      errors.push(`${context}.alerts.${id}.text must contain 1 to 256 characters when the alert is enabled.`);
+    if (alert?.enabled && alert.text.length > 256) {
+      errors.push(`${context}.alerts.${id}.text must contain at most 256 characters when the alert is enabled.`);
     }
   }
 }
@@ -868,6 +921,81 @@ function boundingBox(polygon: readonly Point[]): Box {
 
 function boxesOverlap(a: Box, b: Box): boolean {
   return a.minX <= b.maxX && a.maxX >= b.minX && a.minY <= b.maxY && a.maxY >= b.minY;
+}
+
+function validateScheduleText(textValue: string, context: string, maximum: number, available: ReadonlySet<string>, errors: ErrorSink): void {
+  const length = [...textValue].length;
+  if (length > maximum) errors.push(`${context} must contain at most ${maximum} characters when enabled.`);
+  for (const match of textValue.matchAll(/\{([^{}]+)\}/gu)) {
+    const placeholder = match[1]!;
+    if (!SCHEDULE_PLACEHOLDERS.has(placeholder)) errors.push(`${context} contains unsupported placeholder {${placeholder}}.`);
+    else if (!available.has(placeholder)) errors.push(`${context} cannot use {${placeholder}} for this schedule.`);
+  }
+}
+
+function validateScheduleDefinitions(config: PalLawConfigValue, modeIds: ReadonlySet<string>, errors: ErrorSink, warnings: string[]): void {
+  if (config.schedules.length > 64) errors.push("schedules must contain at most 64 entries.");
+  const scheduleIds = new Set<string>();
+  const scheduleNames = new Set<string>();
+  const targets = new Map<string, string[]>();
+  const areas: Array<{ area: AreaValue; path: string }> = [
+    { area: config.wilderness, path: "wilderness" },
+    { area: config.stageAreas, path: "stageAreas" },
+    ...config.regions.map((area, index) => ({ area, path: `regions[${index}]` }))
+  ];
+  for (const { area, path } of areas) {
+    const seen = new Set<string>();
+    area.schedules.forEach((id, index) => {
+      if (seen.has(id)) errors.push(`${path}.schedules[${index}] duplicates ${id}.`);
+      seen.add(id);
+      const entries = targets.get(id) ?? [];
+      entries.push(path);
+      targets.set(id, entries);
+    });
+  }
+  config.schedules.forEach((schedule, index) => {
+    const context = `schedules[${index}]`;
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(schedule.id)) errors.push(`${context}.id must use lowercase slug syntax.`);
+    if (scheduleIds.has(schedule.id)) errors.push(`${context}.id duplicates another schedule.`);
+    scheduleIds.add(schedule.id);
+    const normalizedName = schedule.name.trim().toLocaleLowerCase();
+    if (!normalizedName || [...schedule.name].length > 96) errors.push(`${context}.name must contain between 1 and 96 characters.`);
+    if (scheduleNames.has(normalizedName)) errors.push(`${context}.name duplicates another schedule name ignoring case.`);
+    scheduleNames.add(normalizedName);
+    if (!schedule.days.length || schedule.days.length > 7 || schedule.days.some((day) => !WEEKDAY_IDS.has(day)) || new Set(schedule.days).size !== schedule.days.length) {
+      errors.push(`${context}.days must contain one to seven unique weekdays.`);
+    }
+    if (!ISO_MINUTE_TIME.test(schedule.startTime)) errors.push(`${context}.startTime must use UTC HH:mm.`);
+    if (schedule.endTime !== null && !ISO_MINUTE_TIME.test(schedule.endTime)) errors.push(`${context}.endTime must use UTC HH:mm.`);
+    if (schedule.announcements.length > 64) errors.push(`${context}.announcements must contain at most 64 entries.`);
+    if (!schedule.mode && schedule.announcements.length === 0) errors.push(`${context} must define a mode takeover or at least one announcement.`);
+    if (schedule.mode) {
+      if (!modeIds.has(schedule.mode)) errors.push(`${context}.mode references an unknown mode.`);
+      if (schedule.endTime === null) errors.push(`${context}.endTime is required for a mode takeover.`);
+      if (!(targets.get(schedule.id)?.length)) errors.push(`${context} is a mode takeover but no Area references it.`);
+    } else {
+      if (targets.get(schedule.id)?.length) errors.push(`${context} is announcement-only and cannot be assigned to Areas.`);
+    }
+    const available = new Set(SCHEDULE_PLACEHOLDERS);
+    const duration = scheduleDurationMinutes(schedule);
+    schedule.announcements.forEach((announcement, announcementIndex) => {
+      const announcementContext = `${context}.announcements[${announcementIndex}]`;
+      if (announcement.relativeTo !== "start" && announcement.relativeTo !== "end") errors.push(`${announcementContext}.relativeTo must be start or end.`);
+      if (!Number.isInteger(announcement.minutesBefore) || announcement.minutesBefore < 0 || announcement.minutesBefore > 60) errors.push(`${announcementContext}.minutesBefore must be an integer between 0 and 60.`);
+      if (announcement.relativeTo === "end") {
+        if (!schedule.endTime) errors.push(`${announcementContext} cannot use end without endTime.`);
+        else if (duration !== null && announcement.minutesBefore > duration) errors.push(`${announcementContext}.minutesBefore cannot exceed the schedule duration.`);
+      }
+      const anyOutput = announcement.globalChat.enabled || announcement.serverNotice.enabled;
+      if (announcement.enabled && !anyOutput) errors.push(`${announcementContext} must enable Global chat or Server notice.`);
+      if (announcement.globalChat.enabled) validateScheduleText(announcement.globalChat.text, `${announcementContext}.globalChat.text`, 512, available, errors);
+      if (announcement.serverNotice.enabled) validateScheduleText(announcement.serverNotice.text, `${announcementContext}.serverNotice.text`, 256, available, errors);
+    });
+  });
+  for (const [id, paths] of targets) {
+    if (!scheduleIds.has(id)) for (const path of paths) errors.push(`${path}.schedules references unknown schedule ${id}.`);
+  }
+  config.schedules.filter((schedule) => !schedule.enabled).forEach((schedule) => warnings.push(`Schedule "${schedule.name}" is disabled.`));
 }
 
 function isPlainObject(value: unknown): value is JsonRecord {
@@ -976,7 +1104,7 @@ function validateRawCombat(value: unknown, context: string, errors: ErrorSink): 
 }
 
 function validateRawArea(value: unknown, context: string, region: boolean, errors: ErrorSink): void {
-  const allowed = new Set(["name", "mode", "actions", "combat", "messages"]);
+  const allowed = new Set(["name", "mode", "schedules", "actions", "combat", "messages"]);
   if (region) {
     for (const key of ["enabled", "minimumLevel", "map", "polygon"]) allowed.add(key);
   }
@@ -986,7 +1114,31 @@ function validateRawArea(value: unknown, context: string, region: boolean, error
   if (Object.hasOwn(value, "actions")) validateRawActions(value.actions, `${context}.actions`, errors);
   if (Object.hasOwn(value, "combat")) validateRawCombat(value.combat, `${context}.combat`, errors);
   if (Object.hasOwn(value, "messages")) validateRawMessages(value.messages, `${context}.messages`, false, errors);
+  if (Object.hasOwn(value, "schedules") && !Array.isArray(value.schedules)) errors.push(`${context}.schedules must be an array.`);
   if (region && !Object.hasOwn(value, "polygon")) errors.push(`${context}.polygon is required.`);
+}
+
+function validateRawScheduleOutput(value: unknown, context: string, errors: ErrorSink): void {
+  if (!rejectUnknownKeys(value, new Set(["enabled", "text"]), context, errors)) return;
+  if (Object.hasOwn(value, "enabled") && typeof value.enabled !== "boolean") errors.push(`${context}.enabled must be true or false.`);
+  if (Object.hasOwn(value, "text") && typeof value.text !== "string") errors.push(`${context}.text must be a string.`);
+}
+
+function validateRawAnnouncement(value: unknown, context: string, errors: ErrorSink): void {
+  if (!rejectUnknownKeys(value, new Set(["enabled", "relativeTo", "minutesBefore", "globalChat", "serverNotice"]), context, errors)) return;
+  for (const key of ["relativeTo", "minutesBefore"]) if (!Object.hasOwn(value, key)) errors.push(`${context}.${key} is required.`);
+  if (Object.hasOwn(value, "globalChat")) validateRawScheduleOutput(value.globalChat, `${context}.globalChat`, errors);
+  if (Object.hasOwn(value, "serverNotice")) validateRawScheduleOutput(value.serverNotice, `${context}.serverNotice`, errors);
+}
+
+function validateRawSchedule(value: unknown, index: number, errors: ErrorSink): void {
+  const context = `schedules[${index}]`;
+  if (!rejectUnknownKeys(value, new Set(["id", "name", "enabled", "days", "startTime", "endTime", "mode", "announcements"]), context, errors)) return;
+  for (const key of ["id", "name", "days", "startTime"]) if (!Object.hasOwn(value, key)) errors.push(`${context}.${key} is required.`);
+  if (Object.hasOwn(value, "announcements")) {
+    if (!Array.isArray(value.announcements)) errors.push(`${context}.announcements must be an array.`);
+    else value.announcements.forEach((announcement, announcementIndex) => validateRawAnnouncement(announcement, `${context}.announcements[${announcementIndex}]`, errors));
+  }
 }
 
 function validateRawMode(value: unknown, index: number, errors: ErrorSink): void {
@@ -1042,7 +1194,7 @@ function validateRawRegionalCombat(value: unknown, errors: ErrorSink): void {
 }
 
 function validateRawConfig(input: unknown, errors: ErrorSink): void {
-  if (!rejectUnknownKeys(input, new Set(["$schema", "version", "regionalCombat", "settings", "messages", "modes", "wilderness", "stageAreas", "regions"]), "root", errors)) return;
+  if (!rejectUnknownKeys(input, new Set(["$schema", "version", "regionalCombat", "settings", "messages", "schedules", "modes", "wilderness", "stageAreas", "regions"]), "root", errors)) return;
   if (!Object.hasOwn(input, "version")) errors.push("version is required.");
   if (!Object.hasOwn(input, "modes")) errors.push("modes is required.");
   if (!Object.hasOwn(input, "wilderness")) errors.push("wilderness is required.");
@@ -1055,6 +1207,10 @@ function validateRawConfig(input: unknown, errors: ErrorSink): void {
     rejectUnknownKeys(input.settings, allowed, "settings", errors);
   }
   if (Object.hasOwn(input, "messages")) validateRawMessages(input.messages, "messages", true, errors);
+  if (Object.hasOwn(input, "schedules")) {
+    if (!Array.isArray(input.schedules)) errors.push("schedules must be an array.");
+    else input.schedules.forEach((schedule, index) => validateRawSchedule(schedule, index, errors));
+  }
   if (Object.hasOwn(input, "modes")) {
     if (!Array.isArray(input.modes)) errors.push("modes must be an array.");
     else input.modes.forEach((mode, index) => validateRawMode(mode, index, errors));
@@ -1132,6 +1288,8 @@ export function validateConfig(input: unknown) {
     validateCombat(region.combat, `${prefix}.combat`, errors);
     if (!region.enabled) warnings.push(`${prefix} (${region.name || "unnamed"}) is disabled.`);
   });
+
+  validateScheduleDefinitions(config, modeIds, errors, warnings);
 
   const stageMessages = resolveAreaMessages(config, config.stageAreas);
   for (const event of MESSAGE_EVENTS) validateMessage(messageFor(stageMessages, event.id), `stageAreas.messages.${event.id}`, errors);
@@ -1222,6 +1380,7 @@ function compactDisplayNames(names: Readonly<Record<string, string>>, defaults: 
 
 function compactArea(area: AreaValue, globalMessages: GlobalMessages): JsonRecord {
   const result: JsonRecord = { name: area.name, mode: area.mode };
+  if (area.schedules.length) result.schedules = [...area.schedules];
   if (Object.keys(area.actions || {}).length) result.actions = clone(area.actions);
   if ((area.combat || []).length) result.combat = clone(area.combat);
   const resolved = normalizeMessages(area.messages, globalMessages, false);
@@ -1238,6 +1397,22 @@ export function serializeConfig(input: unknown): JsonRecord {
     regionalCombat: clone(config.regionalCombat),
     settings: clone(config.settings),
     messages: compactMessages(config.messages, DEFAULT_MESSAGES, true),
+    schedules: config.schedules.map((schedule) => ({
+      id: schedule.id,
+      name: schedule.name,
+      enabled: schedule.enabled,
+      days: [...schedule.days],
+      startTime: schedule.startTime,
+      ...(schedule.endTime ? { endTime: schedule.endTime } : {}),
+      ...(schedule.mode ? { mode: schedule.mode } : {}),
+      announcements: schedule.announcements.map((announcement) => ({
+        enabled: announcement.enabled,
+        relativeTo: announcement.relativeTo,
+        minutesBefore: announcement.minutesBefore,
+        globalChat: clone(announcement.globalChat),
+        serverNotice: clone(announcement.serverNotice)
+      }))
+    })),
     modes: config.modes.map((mode) => ({
       id: mode.id,
       name: mode.name,
@@ -1268,6 +1443,35 @@ export function stringifyConfig(input: unknown): string {
 }
 
 function currentMigrationRegistry(): MigrationDefinition[] {
+  const validateVersion1MessageText = (document: JsonObject) => {
+    const validateChannel = (value: unknown, context: string, maximum: number) => {
+      if (typeof value === "string" && value.length === 0) {
+        throw new Error(`${context} must contain 1 to ${maximum} characters in Configuration Version 1.`);
+      }
+      if (isPlainObject(value) && Object.hasOwn(value, "text") && value.text === "") {
+        throw new Error(`${context}.text must contain 1 to ${maximum} characters in Configuration Version 1.`);
+      }
+    };
+    const validateMessages = (value: unknown, context: string) => {
+      if (!isPlainObject(value)) return;
+      for (const eventId of ["regionChanged", "pvpWarning", "actionDenied", "levelDenied"]) {
+        const event = value[eventId];
+        if (!isPlainObject(event)) continue;
+        if (Object.hasOwn(event, "chat")) validateChannel(event.chat, `${context}.${eventId}.chat`, 512);
+        if (!isPlainObject(event.alerts)) continue;
+        if (Object.hasOwn(event.alerts, "brief")) validateChannel(event.alerts.brief, `${context}.${eventId}.alerts.brief`, 256);
+        if (Object.hasOwn(event.alerts, "activity")) validateChannel(event.alerts.activity, `${context}.${eventId}.alerts.activity`, 256);
+      }
+    };
+    validateMessages(document.messages, "messages");
+    const validateArea = (area: unknown, context: string) => {
+      if (isPlainObject(area)) validateMessages(area.messages, `${context}.messages`);
+    };
+    validateArea(document.wilderness, "wilderness");
+    if (Array.isArray(document.regions)) {
+      document.regions.forEach((region, index) => validateArea(region, `regions[${index}]`));
+    }
+  };
   const migrateCombat = (area: unknown, path: string, report: MigrationReportEntry[]) => {
     if (!isPlainObject(area) || !Array.isArray(area.combat)) return;
     area.combat.forEach((entry, index) => {
@@ -1475,6 +1679,7 @@ function currentMigrationRegistry(): MigrationDefinition[] {
     });
   };
   const migrateV3ToV4 = (document: JsonObject) => {
+    if (!Array.isArray(document.schedules)) document.schedules = [];
     const migrateArea = (area: unknown) => {
       if (!isPlainObject(area) || !isPlainObject(area.actions)) return;
       if (area.actions.fastTravelDeparture === "baseOnly") {
@@ -1490,6 +1695,7 @@ function currentMigrationRegistry(): MigrationDefinition[] {
     {
       version: 1,
       validate(document) {
+        validateVersion1MessageText(document);
         if (Object.hasOwn(document, "damage")) {
           throw new Error("Configuration Version 1 does not allow the damage object.");
         }
@@ -1578,4 +1784,8 @@ export function formatTemplate(template: unknown, values: Readonly<Record<string
     result = result.replaceAll(`{${placeholder}}`, values[placeholder] == null ? "" : String(values[placeholder]));
   }
   return result;
+}
+
+export function hasVisibleMessageText(value: unknown): boolean {
+  return typeof value === "string" && /[^ \t\r\n]/u.test(value);
 }

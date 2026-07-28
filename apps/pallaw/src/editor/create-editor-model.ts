@@ -1,12 +1,13 @@
 import { createStore } from "solid-js/store";
 import type { EditorDocument, EditorSnapshot } from "../document/create-editor-document";
 
-export type EditorSection = "regions" | "modes" | "messages" | "settings" | "json";
+export type EditorSection = "regions" | "modes" | "schedules" | "messages" | "settings" | "json";
 export type WorkspaceView = "list" | "map" | "edit";
 
 interface EditorConfigurationShape {
   readonly regions: readonly unknown[];
   readonly modes: readonly unknown[];
+  readonly schedules?: readonly unknown[];
 }
 
 export interface EditorViewState<TConfig> {
@@ -15,6 +16,7 @@ export interface EditorViewState<TConfig> {
   readonly workspaceView: WorkspaceView;
   readonly selectedRegionIndex: number | null;
   readonly selectedModeIndex: number;
+  readonly selectedScheduleIndex: number;
   readonly regionSearch: string;
   readonly modeSearch: string;
   readonly selectedMessageId: string;
@@ -31,6 +33,7 @@ interface MutableEditorViewState<TConfig> {
   workspaceView: WorkspaceView;
   selectedRegionIndex: number | null;
   selectedModeIndex: number;
+  selectedScheduleIndex: number;
   regionSearch: string;
   modeSearch: string;
   selectedMessageId: string;
@@ -47,6 +50,7 @@ export interface EditorModel<TConfig> {
   setWorkspaceView(view: WorkspaceView): void;
   selectRegion(index: number | null): void;
   selectMode(index: number): void;
+  selectSchedule(index: number): void;
   setRegionSearch(value: string): void;
   setModeSearch(value: string): void;
   setSelectedMessage(id: string): void;
@@ -64,6 +68,7 @@ export function createEditorModel<TConfig extends EditorConfigurationShape>(docu
     workspaceView: "list",
     selectedRegionIndex: initial.config.regions.length ? 0 : null,
     selectedModeIndex: 0,
+    selectedScheduleIndex: 0,
     regionSearch: "",
     modeSearch: "",
     selectedMessageId: "regionChanged",
@@ -79,9 +84,11 @@ export function createEditorModel<TConfig extends EditorConfigurationShape>(docu
       ? null
       : Math.min(state.selectedRegionIndex ?? 0, snapshot.config.regions.length - 1);
     const modeIndex = Math.max(0, Math.min(state.selectedModeIndex, snapshot.config.modes.length - 1));
+    const scheduleIndex = Math.max(0, Math.min(state.selectedScheduleIndex, (snapshot.config.schedules?.length ?? 0) - 1));
     setState("snapshot", snapshot);
     setState("selectedRegionIndex", regionIndex);
     setState("selectedModeIndex", modeIndex);
+    setState("selectedScheduleIndex", scheduleIndex);
   });
 
   const model: EditorModel<TConfig> = {
@@ -90,6 +97,7 @@ export function createEditorModel<TConfig extends EditorConfigurationShape>(docu
     setWorkspaceView: (workspaceView: WorkspaceView) => { setState("workspaceView", workspaceView); },
     selectRegion: (index: number | null) => { setState("selectedRegionIndex", index); },
     selectMode: (index: number) => { setState("selectedModeIndex", index); },
+    selectSchedule: (index: number) => { setState("selectedScheduleIndex", index); },
     setRegionSearch: (value: string) => { setState("regionSearch", value); },
     setModeSearch: (value: string) => { setState("modeSearch", value); },
     setSelectedMessage: (id: string) => { setState("selectedMessageId", id); },

@@ -1,6 +1,6 @@
 {
   "$schema": "../../site/pallaw/PalLaw.schema.json",
-  "version": 3,
+  "version": 4,
   "regionalCombat": {
     "enabled": true
   },
@@ -66,11 +66,13 @@
   },
   "wilderness": {
     "name": "Wilderness",
-    "mode": "pve"
+    "mode": "pve",
+    "schedules": ["weekend-pvp"]
   },
   "stageAreas": {
     "name": "Stage Areas",
-    "mode": "pve"
+    "mode": "pve",
+    "schedules": []
   },
   "regions": [
     {
@@ -150,6 +152,42 @@
         "fastTravelDeparture": "all",
         "fastTravelArrival": "none"
       }
+    }
+  ],
+  "schedules": [
+    {
+      "id": "weekend-pvp",
+      "name": "Weekend PvP",
+      "enabled": true,
+      "days": ["sat", "sun"],
+      "startTime": "18:00",
+      "endTime": "22:00",
+      "mode": "pvp",
+      "announcements": [
+        {
+          "enabled": true,
+          "relativeTo": "start",
+          "minutesBefore": 15,
+          "globalChat": { "enabled": true, "text": "{schedule} starts in {minutes} minutes." },
+          "serverNotice": { "enabled": true, "text": "{schedule} starts soon" }
+        }
+      ]
+    },
+    {
+      "id": "daily-restart-reminder",
+      "name": "Daily restart reminder",
+      "enabled": true,
+      "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+      "startTime": "05:00",
+      "announcements": [
+        {
+          "enabled": true,
+          "relativeTo": "start",
+          "minutesBefore": 5,
+          "globalChat": { "enabled": true, "text": "Server restart in {minutes} minutes." },
+          "serverNotice": { "enabled": false, "text": "" }
+        }
+      ]
     }
   ],
   "modes": [

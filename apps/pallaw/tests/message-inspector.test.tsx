@@ -30,4 +30,35 @@ describe("MessageInspector", () => {
     await fireEvent.click(screen.getByLabelText("Enable System chat"));
     expect(change).toHaveBeenCalledWith({ type: "set-chat-enabled", eventId: "actionDenied", value: true });
   });
+
+  test("previews and counts only visible Message Outputs", () => {
+    const outputs = {
+      ...message,
+      chat: { enabled: true, text: " \t\r\n" },
+      alerts: {
+        brief: { enabled: true, text: "", tone: "negative" },
+        activity: { enabled: true, text: "Visible tip" }
+      }
+    };
+    render(() => <MessageInspector messages={{ enabled: true, actionNames: {}, actionDenied: outputs }} resolved={{ actionDenied: outputs }} selectedEventId="actionDenied" modeName="Safe" onChange={vi.fn()} />);
+
+    expect(screen.getByText("1 outputs")).toBeTruthy();
+    expect(screen.getByText("Visible tip")).toBeTruthy();
+    expect(screen.queryByText(/^Chat:/)).toBeNull();
+  });
+
+  test("shows a no-visible-output state when every enabled output is silent", () => {
+    const outputs = {
+      ...message,
+      chat: { enabled: true, text: "" },
+      alerts: {
+        brief: { enabled: true, text: " \t" },
+        activity: { enabled: false, text: "Configured but disabled" }
+      }
+    };
+    render(() => <MessageInspector messages={{ enabled: true, actionNames: {}, actionDenied: outputs }} resolved={{ actionDenied: outputs }} selectedEventId="actionDenied" modeName="Safe" onChange={vi.fn()} />);
+
+    expect(screen.getByText("0 outputs")).toBeTruthy();
+    expect(screen.getByText("No visible outputs.")).toBeTruthy();
+  });
 });

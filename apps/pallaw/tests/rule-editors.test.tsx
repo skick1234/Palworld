@@ -21,7 +21,22 @@ describe("CombatMatrix", () => {
     await fireEvent.mouseEnter(screen.getByRole("button", { name: /Player to Partner Pal/ }));
 
     const description = document.querySelector(".matrix-actor-description");
-    expect(description?.textContent).toContain("Player to Partner Pal");
-    expect(description?.textContent).toContain("A player character. A Pal currently partnered with and controlled by a player.");
+    const labels = [...description!.querySelectorAll(".matrix-definition-list > strong")].map((element) => element.textContent);
+    const definitions = [...description!.querySelectorAll(".matrix-definition-list > span")].map((element) => element.textContent);
+    expect(labels).toEqual(["Player", "Partner Pal"]);
+    expect(definitions[0]).toBe("A player character.");
+    expect(definitions[1]).toBe("A Pal currently partnered with and controlled by a player.");
+  });
+
+  test("shows a same-actor relationship definition only once", async () => {
+    render(() => <CombatMatrix matrix={{ player: { player: true } }} isMode={true} overrideFor={() => "allow"} onChange={vi.fn()} />);
+
+    await fireEvent.mouseEnter(screen.getByRole("button", { name: /^Player to Player:/ }));
+
+    const description = document.querySelector(".matrix-actor-description");
+    const labels = [...description!.querySelectorAll(".matrix-definition-list > strong")].map((element) => element.textContent);
+    const definitions = [...description!.querySelectorAll(".matrix-definition-list > span")].map((element) => element.textContent);
+    expect(labels).toEqual(["Player"]);
+    expect(definitions).toEqual(["A player character."]);
   });
 });

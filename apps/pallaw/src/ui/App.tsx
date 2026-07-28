@@ -1,4 +1,4 @@
-import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal, lazy, onCleanup, onMount } from "solid-js";
 import type { EditorDocument } from "../document/create-editor-document";
 import type { PalLawConfig } from "../document/create-pallaw-document";
 import { createEditorModel, type EditorSection, type WorkspaceView } from "../editor/create-editor-model";
@@ -8,16 +8,29 @@ import {
   resolveAreaMessages, stringifyConfig
 } from "../domain/rules";
 import { createLeafletMap, type MapCallbacks, type MapController } from "../map/create-leaflet-map";
-import { AreaEditor, type AreaIntent } from "./AreaEditor";
+import type { AreaIntent } from "../editor/intents";
 import { LocalizationInspector } from "./LocalizationInspector";
 import { MapSwitcher } from "./MapSwitcher";
 import { MessageInspector, type MessageCollection, type MessageIntent } from "./MessageInspector";
-import { ModeInspector, type ModeIntent } from "./ModeInspector";
+import type { ModeIntent } from "../editor/intents";
 import { SettingsInspector, JsonInspector, type SettingScope } from "./SimpleInspectors";
 import { Sidebar, type SidebarActions, type SidebarState } from "./Sidebar";
 import { WorkspaceViewNav } from "./WorkspaceViewNav";
 import { createPalLawCommands } from "../editor/create-pallaw-commands";
 import { SupportControl, ThemeToggle } from "../../../shared/src/SiteControls";
+
+const ScheduleInspector = lazy(async () => {
+  const module = await import("./ScheduleInspector");
+  return { default: module.ScheduleInspector };
+});
+const ModeInspector = lazy(async () => {
+  const module = await import("./ModeInspector");
+  return { default: module.ModeInspector };
+});
+const AreaEditor = lazy(async () => {
+  const module = await import("./AreaEditor");
+  return { default: module.AreaEditor };
+});
 
 const LOCALIZATION = "localization";
 type ToastKind = "success" | "error";
@@ -78,6 +91,7 @@ export function App(props: AppProps) {
   const config = () => snapshot().config as PalLawConfig;
   const selectedRegion = () => model.state.selectedRegionIndex === null ? null : config().regions[model.state.selectedRegionIndex] ?? null;
   const selectedMode = () => config().modes[model.state.selectedModeIndex] ?? null;
+  const selectedSchedule = () => config().schedules[model.state.selectedScheduleIndex] ?? null;
   const area = () => editingWilderness()
     ? config().wilderness
     : editingStageAreas()
@@ -93,7 +107,7 @@ export function App(props: AppProps) {
   };
   const setSection = (section: EditorSection) => {
     model.setSection(section);
-    model.setWorkspaceView(["regions", "modes", "messages"].includes(section) ? "list" : "edit");
+    model.setWorkspaceView(["regions", "modes", "schedules", "messages"].includes(section) ? "list" : "edit");
     setEditingShape(false);
     if (section === "json") setRawValue(snapshot().serialized);
   };
@@ -174,7 +188,8 @@ export function App(props: AppProps) {
   }));
   const sidebarState = (): SidebarState => ({
     section: model.state.activeSection, config: config(), selectedRegionIndex: model.state.selectedRegionIndex,
-    selectedModeIndex: model.state.selectedModeIndex, selectedMessageId: selectedMessage(), messages: messageSummaries()
+    selectedModeIndex: model.state.selectedModeIndex, selectedScheduleIndex: model.state.selectedScheduleIndex,
+    selectedMessageId: selectedMessage(), messages: messageSummaries()
   });
   const sidebarActions: SidebarActions = {
     selectRegion: (index) => { model.selectRegion(index); model.setWorkspaceView("map"); const region = config().regions[index]; if (region?.map) setActiveMapId(region.map); },
@@ -193,6 +208,11 @@ export function App(props: AppProps) {
       const used = [config().wilderness, config().stageAreas, ...config().regions].some((area) => area.mode === source.id);
       openActionDialog({ kind: "delete-mode", index, used }, trigger);
     },
+    selectSchedule: (index) => { model.selectSchedule(index); model.setWorkspaceView("edit"); },
+    addSchedule: () => { commands.addSchedule(); model.setWorkspaceView("edit"); },
+    moveSchedule: commands.moveSchedule,
+    duplicateSchedule: (index) => { commands.duplicateSchedule(index); model.setWorkspaceView("edit"); },
+    deleteSchedule: (index) => { commands.deleteSchedule(index); },
     selectMessage: (id) => { setSelectedMessage(id); model.setWorkspaceView("edit"); }
   };
 
@@ -231,7 +251,7 @@ export function App(props: AppProps) {
   window.addEventListener("beforeunload", beforeUnload);
   onCleanup(() => { document.removeEventListener("keydown", keyboard); window.removeEventListener("beforeunload", beforeUnload); mapController?.dispose(); model.dispose(); });
 
-  const sections: readonly [EditorSection, string][] = [["regions", "Regions"], ["modes", "Modes"], ["messages", "Messages"], ["settings", "Runtime"], ["json", "Raw JSON"]];
+  const sections: readonly [EditorSection, string][] = [["regions", "Regions"], ["modes", "Modes"], ["schedules", "Schedules"], ["messages", "Messages"], ["settings", "Runtime"], ["json", "Raw JSON"]];
   const workspaceView = () => model.state.workspaceView;
   const selectedEvent = () => MESSAGE_EVENTS.find((event) => event.id === selectedMessage()) ?? MESSAGE_EVENTS[0]!;
   const selectedArea = () => area();
@@ -248,19 +268,20 @@ export function App(props: AppProps) {
           <button class="button ghost" type="button" onClick={() => { importInput.click(); }}>Import</button>
           <button class="button primary" type="button" aria-label="Export PalLaw.json" disabled={!snapshot().validation.valid} onClick={() => { const exported = props.editorDocument.export(); download(exported.fileName, exported.contents); props.editorDocument.dispatch({ type: "mark-exported" }); toast(`${exported.fileName} exported.`); }}><span class="export-label-full">Export PalLaw.json</span><span class="export-label-short">Export</span></button>
         </div></div>
-        <nav class="section-nav" aria-label="Configuration sections"><For each={sections}>{([id, label]) => <button type="button" classList={{ "section-tab": true, active: model.state.activeSection === id }} onClick={() => { setSection(id); }}><span>{label}</span><Show when={id === "regions"}><span class="count-badge">{config().regions.length}</span></Show></button>}</For></nav>
+        <nav class="section-nav" aria-label="Configuration sections"><For each={sections}>{([id, label]) => <button type="button" classList={{ "section-tab": true, active: model.state.activeSection === id }} onClick={() => { setSection(id); }}><span>{label}</span><Show when={id === "regions" || id === "schedules"}><span class="count-badge">{id === "regions" ? config().regions.length : config().schedules.length}</span></Show></button>}</For></nav>
         <nav class="workspace-view-nav" aria-label="Workspace view"><WorkspaceViewNav section={model.state.activeSection} view={workspaceView()} messageLabel={selectedMessage() === LOCALIZATION ? "Localization" : "Message"} onSelect={(view) => { model.setWorkspaceView(view); }} /></nav>
       </header>
-      <main id="workspace" class="workspace" data-section={model.state.activeSection} data-view={workspaceView()} data-layout={["regions", "modes", "messages"].includes(model.state.activeSection) ? "split" : "single"}>
+      <main id="workspace" class="workspace" data-section={model.state.activeSection} data-view={workspaceView()} data-layout={["regions", "modes", "schedules", "messages"].includes(model.state.activeSection) ? "split" : "single"}>
         <aside class="workspace-pane workspace-sidebar navigation-panel" data-workspace-pane="list" aria-label="Configuration sections"><section class="sidebar-content"><Sidebar state={sidebarState()} actions={sidebarActions} /></section></aside>
-        <section class="workspace-pane workspace-content map-panel" data-workspace-pane="map" aria-label="Region map editor"><div class="map-core"><div class="map-toolbar"><div class="segmented" aria-label="Coordinate map"><MapSwitcher maps={MAPS} activeId={activeMapId()} onSelect={selectMap} /></div><p class="map-guide">{drawing() ? `${drawPointCount()} points added` : editingShape() ? "Drag the round handles to reshape the selected region." : selectedRegion() ? "Drag the selected region to move it. Choose Edit shape to move vertices." : "Select a region to move or reshape it."}</p><div class="map-toolbar-actions">
-          <button class="button compact ghost" type="button" aria-pressed={editingShape()} disabled={!selectedRegion() || drawing()} hidden={drawing()} onClick={() => { setEditingShape(!editingShape()); }}>{editingShape() ? "Done" : "Edit shape"}</button>
-          <button class="button compact primary" type="button" hidden={drawing()} onClick={() => { setEditingShape(false); mapController?.dispatch({ type: "start-drawing" }); }}>Draw region</button>
+        <section class="workspace-pane workspace-content map-panel" data-workspace-pane="map" aria-label="Area map"><div class="map-core"><div class="map-toolbar"><div class="segmented" aria-label="Coordinate map"><MapSwitcher maps={MAPS} activeId={activeMapId()} onSelect={selectMap} /></div><p class="map-guide">{model.state.activeSection === "schedules" ? selectedRegion() ? "The first assigned Region is highlighted while you edit this schedule." : "Use Area assignments in the schedule settings; polygon Regions remain visible here for context." : drawing() ? `${drawPointCount()} points added` : editingShape() ? "Drag the round handles to reshape the selected region." : selectedRegion() ? "Drag the selected region to move it. Choose Edit shape to move vertices." : "Select a region to move or reshape it."}</p><div class="map-toolbar-actions">
+          <button class="button compact ghost" type="button" aria-pressed={editingShape()} disabled={!selectedRegion() || drawing()} hidden={drawing() || model.state.activeSection === "schedules"} onClick={() => { setEditingShape(!editingShape()); }}>{editingShape() ? "Done" : "Edit shape"}</button>
+          <button class="button compact primary" type="button" hidden={drawing() || model.state.activeSection === "schedules"} onClick={() => { setEditingShape(false); mapController?.dispatch({ type: "start-drawing" }); }}>Draw region</button>
           <button class="button compact success" type="button" hidden={!drawing()} disabled={drawPointCount() < 3} onClick={() => { mapController?.dispatch({ type: "finish-drawing" }); }}>Finish</button>
           <button class="button compact danger" type="button" hidden={!drawing()} onClick={() => { mapController?.dispatch({ type: "cancel-drawing" }); }}>Cancel</button><button class="button compact ghost" type="button" onClick={() => { mapController?.dispatch({ type: "fit-visible" }); }}>Fit</button></div></div>
           <div ref={mapElement} class="map" tabindex="0" aria-label="Interactive coordinate map" /><div class="draw-hint" hidden={!drawing()} aria-live="polite">Click to add vertices. Double-click or choose Finish after at least three points. Press Escape to cancel.</div><div class="map-footer"><span id="coordinateReadout" class="mono">{coordinateReadout()}</span><a class="legal-link" href="../legal/">Unofficial | Map notice</a></div></div></section>
         <aside class="workspace-pane workspace-content inspector-panel" data-workspace-pane="edit" aria-label="Selected item editor"><div class="inspector-core"><div class="inspector-content">
           <Show when={model.state.activeSection === "modes"}>{selectedMode() ? <ModeInspector mode={selectedMode()!} messages={messageCollection()} resolvedMessages={messageResolved({ mode: selectedMode()!.id, messages: selectedMode()!.messages })} onChange={applyModeIntent} /> : <div class="empty-state"><strong>No mode selected</strong></div>}</Show>
+          <Show when={model.state.activeSection === "schedules"}>{selectedSchedule() ? <ScheduleInspector schedule={selectedSchedule()!} modes={config().modes} wilderness={config().wilderness} stageAreas={config().stageAreas} regions={config().regions} onUpdate={(apply) => { commands.updateSchedule(model.state.selectedScheduleIndex, apply); }} onAssign={(kind, index, assigned) => { commands.setScheduleArea(selectedSchedule()!.id, kind, index, assigned); }} /> : <div class="empty-state"><strong>No schedule selected</strong><span>Add a schedule from the list.</span></div>}</Show>
           <Show when={model.state.activeSection === "messages"}>{selectedMessage() === LOCALIZATION ? <LocalizationInspector names={config().messages.actionNames} onChange={commands.setActionName} /> : <MessageInspector messages={messageCollection()} resolved={config().messages as never} selectedEventId={selectedEvent().id} modeName={config().modes[0]?.name ?? ""} showHeader onChange={(intent) => { commands.applyMessage({ kind: "global" }, intent); }} />}</Show>
           <Show when={model.state.activeSection === "settings"}><SettingsInspector settings={config().settings} regionalCombat={config().regionalCombat} onChange={changeSetting} /></Show>
           <Show when={model.state.activeSection === "json"}><JsonInspector value={rawValue()} onValue={setRawValue} onApply={applyJson} onToast={toast} /></Show>

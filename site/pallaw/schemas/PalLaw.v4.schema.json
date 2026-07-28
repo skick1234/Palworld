@@ -11,6 +11,12 @@
     "regionalCombat": { "$ref": "#/$defs/regionalCombat" },
     "settings": { "$ref": "#/$defs/settings" },
     "messages": { "$ref": "#/$defs/globalMessages" },
+    "schedules": {
+      "type": "array",
+      "maxItems": 64,
+      "description": "Ordered recurring schedules. When active mode windows overlap in one Area, the later schedule wins.",
+      "items": { "$ref": "#/$defs/schedule" }
+    },
     "modes": {
       "type": "array",
       "minItems": 1,
@@ -27,6 +33,11 @@
     }
   },
   "$defs": {
+    "scheduleId": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+      "description": "Immutable schedule identifier using lowercase slug syntax."
+    },
     "modeId": {
       "type": "string",
       "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
@@ -54,13 +65,13 @@
     "chatChannel": {
       "oneOf": [
         { "type": "boolean" },
-        { "type": "string", "minLength": 1, "maxLength": 512 },
+        { "type": "string", "minLength": 0, "maxLength": 512 },
         {
           "type": "object",
           "additionalProperties": false,
           "properties": {
             "enabled": { "type": "boolean" },
-            "text": { "type": "string", "minLength": 1, "maxLength": 512 }
+            "text": { "type": "string", "minLength": 0, "maxLength": 512 }
           }
         }
       ]
@@ -68,13 +79,13 @@
     "activityAlertChannel": {
       "oneOf": [
         { "type": "boolean" },
-        { "type": "string", "minLength": 1, "maxLength": 256 },
+        { "type": "string", "minLength": 0, "maxLength": 256 },
         {
           "type": "object",
           "additionalProperties": false,
           "properties": {
             "enabled": { "type": "boolean" },
-            "text": { "type": "string", "minLength": 1, "maxLength": 256 }
+            "text": { "type": "string", "minLength": 0, "maxLength": 256 }
           }
         }
       ]
@@ -82,13 +93,13 @@
     "briefAlertChannel": {
       "oneOf": [
         { "type": "boolean" },
-        { "type": "string", "minLength": 1, "maxLength": 256 },
+        { "type": "string", "minLength": 0, "maxLength": 256 },
         {
           "type": "object",
           "additionalProperties": false,
           "properties": {
             "enabled": { "type": "boolean" },
-            "text": { "type": "string", "minLength": 1, "maxLength": 256 },
+            "text": { "type": "string", "minLength": 0, "maxLength": 256 },
             "tone": { "enum": ["normal", "negative"] }
           }
         }
@@ -220,6 +231,56 @@
         "messages": { "$ref": "#/$defs/messageOverrides" }
       }
     },
+    "scheduleOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "text"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "text": { "type": "string" }
+      }
+    },
+    "scheduleAnnouncement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["relativeTo", "minutesBefore"],
+      "properties": {
+        "enabled": { "type": "boolean", "default": true },
+        "relativeTo": { "enum": ["start", "end"] },
+        "minutesBefore": { "type": "integer", "minimum": 0, "maximum": 60 },
+        "globalChat": { "$ref": "#/$defs/scheduleOutput" },
+        "serverNotice": { "$ref": "#/$defs/scheduleOutput" }
+      },
+      "anyOf": [
+        { "required": ["globalChat"] },
+        { "required": ["serverNotice"] }
+      ]
+    },
+    "schedule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "days", "startTime"],
+      "properties": {
+        "id": { "$ref": "#/$defs/scheduleId" },
+        "name": { "$ref": "#/$defs/displayName" },
+        "enabled": { "type": "boolean", "default": true },
+        "days": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 7,
+          "uniqueItems": true,
+          "items": { "enum": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] }
+        },
+        "startTime": { "type": "string", "pattern": "^(?:[01][0-9]|2[0-3]):[0-5][0-9]$" },
+        "endTime": { "type": "string", "pattern": "^(?:[01][0-9]|2[0-3]):[0-5][0-9]$", "description": "Same as startTime means a 24-hour window; an earlier time means the following UTC day." },
+        "mode": { "$ref": "#/$defs/modeId" },
+        "announcements": {
+          "type": "array",
+          "maxItems": 64,
+          "items": { "$ref": "#/$defs/scheduleAnnouncement" }
+        }
+      }
+    },
     "actor": { "enum": ["player", "partnerPal", "basePal", "baseStructure", "wildPal", "npc", "structure", "environment"] },
     "sourceActor": { "enum": ["player", "partnerPal", "basePal", "baseStructure", "wildPal", "npc"] },
     "sourceSelection": {
@@ -253,6 +314,7 @@
     "areaProperties": {
       "name": { "$ref": "#/$defs/displayName" },
       "mode": { "$ref": "#/$defs/modeId" },
+      "schedules": { "type": "array", "maxItems": 64, "uniqueItems": true, "items": { "$ref": "#/$defs/scheduleId" } },
       "actions": { "$ref": "#/$defs/actions" },
       "combat": { "$ref": "#/$defs/combatOverrides" },
       "messages": { "$ref": "#/$defs/messageOverrides" }
@@ -264,6 +326,7 @@
       "properties": {
         "name": { "$ref": "#/$defs/displayName" },
         "mode": { "$ref": "#/$defs/modeId" },
+        "schedules": { "type": "array", "maxItems": 64, "uniqueItems": true, "items": { "$ref": "#/$defs/scheduleId" } },
         "actions": { "$ref": "#/$defs/actions" },
         "combat": { "$ref": "#/$defs/combatOverrides" },
         "messages": { "$ref": "#/$defs/messageOverrides" }
@@ -277,6 +340,7 @@
       "properties": {
         "name": { "$ref": "#/$defs/displayName" },
         "mode": { "$ref": "#/$defs/modeId" },
+        "schedules": { "type": "array", "maxItems": 64, "uniqueItems": true, "items": { "$ref": "#/$defs/scheduleId" } },
         "actions": { "$ref": "#/$defs/actions" },
         "combat": { "$ref": "#/$defs/combatOverrides" },
         "messages": { "$ref": "#/$defs/messageOverrides" }
@@ -298,6 +362,7 @@
         "name": { "$ref": "#/$defs/displayName" },
         "enabled": { "type": "boolean", "default": true },
         "mode": { "$ref": "#/$defs/modeId" },
+        "schedules": { "type": "array", "maxItems": 64, "uniqueItems": true, "items": { "$ref": "#/$defs/scheduleId" } },
         "minimumLevel": { "type": "integer", "minimum": 1, "maximum": 999 },
         "map": { "type": "string", "minLength": 1, "maxLength": 64, "default": "world" },
         "polygon": { "type": "array", "minItems": 3, "maxItems": 1024, "items": { "$ref": "#/$defs/point" } },

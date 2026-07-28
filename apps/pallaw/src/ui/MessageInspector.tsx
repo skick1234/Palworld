@@ -1,5 +1,5 @@
 import { For, Show, createSignal } from "solid-js";
-import { ALERT_PRESENTATIONS, ALERT_TONES, MESSAGE_EVENTS, formatTemplate } from "../domain/rules";
+import { ALERT_PRESENTATIONS, ALERT_TONES, MESSAGE_EVENTS, formatTemplate, hasVisibleMessageText } from "../domain/rules";
 import type { MessageIntent } from "../editor/intents";
 import { ControlRow, ControlRowGroup } from "./ControlRow";
 export type { MessageIntent } from "../editor/intents";
@@ -17,20 +17,24 @@ export interface MessageCollection {
   readonly [eventId: string]: unknown;
 }
 
-function enabledOutputCount(message: EventMessage): number {
-  return Number(message.chat.enabled) + Object.values(message.alerts).filter((alert) => alert.enabled).length;
+function enabledOutputCount(message: EventMessage, values: Readonly<Record<string, string | number>>): number {
+  const visible = (text: string) => hasVisibleMessageText(formatTemplate(text, values));
+  return Number(message.chat.enabled && visible(message.chat.text)) +
+    Object.values(message.alerts).filter((alert) => alert.enabled && visible(alert.text)).length;
 }
 
 function Preview(props: { readonly message: EventMessage; readonly values: Readonly<Record<string, string | number>> }) {
-  const outputs = () => enabledOutputCount(props.message);
+  const outputs = () => enabledOutputCount(props.message, props.values);
+  const chatText = () => formatTemplate(props.message.chat.text, props.values);
   return <div class="preview-box">
     <div class="eyebrow">Preview</div>
-    <Show when={props.message.chat.enabled}><div class="preview-chat">Chat: {formatTemplate(props.message.chat.text, props.values)}</div></Show>
+    <Show when={props.message.chat.enabled && hasVisibleMessageText(chatText())}><div class="preview-chat">Chat: {chatText()}</div></Show>
     <For each={ALERT_PRESENTATIONS}>{(presentation) => {
       const alert = () => props.message.alerts[presentation.id]!;
-      return <Show when={alert().enabled}><div class={`preview-alert ${presentation.id} tone-${presentation.id === "brief" ? alert().tone ?? "normal" : "normal"}`}><span class="preview-alert-icon" aria-hidden="true"><span class="hero-icon hero-icon-exclamation-circle" /></span><span class="preview-alert-text">{formatTemplate(alert().text, props.values)}</span></div></Show>;
+      const alertText = () => formatTemplate(alert().text, props.values);
+      return <Show when={alert().enabled && hasVisibleMessageText(alertText())}><div class={`preview-alert ${presentation.id} tone-${presentation.id === "brief" ? alert().tone ?? "normal" : "normal"}`}><span class="preview-alert-icon" aria-hidden="true"><span class="hero-icon hero-icon-exclamation-circle" /></span><span class="preview-alert-text">{alertText()}</span></div></Show>;
     }}</For>
-    <Show when={outputs() === 0}><div class="preview-empty">All outputs are disabled.</div></Show>
+    <Show when={outputs() === 0}><div class="preview-empty">No visible outputs.</div></Show>
   </div>;
 }
 
@@ -66,7 +70,7 @@ export function MessageInspector(props: {
       const usesDefault = () => Boolean(props.areaName) && !Object.hasOwn(props.overrides ?? {}, event.id);
       const placeholders = (channel: "chat" | "alert", presentation = "") => <div class="placeholder-row"><For each={event.placeholders}>{(placeholder) => <button type="button" class="placeholder" disabled={usesDefault()} onClick={() => { insert(`${event.id}:${channel}:${presentation}`, placeholder); }}>{placeholder}</button>}</For></div>;
       return <details classList={{ "message-event": true, "selected-event": Boolean(props.selectedEventId), "uses-default": usesDefault() }} open={Boolean(props.selectedEventId)}>
-        <summary><strong>{event.label}</strong><span>{usesDefault() ? "Default" : message().enabled ? `${enabledOutputCount(message())} outputs` : "Disabled"}</span><Show when={usesDefault()}><span class="badge">Global</span></Show></summary>
+        <summary><strong>{event.label}</strong><span>{usesDefault() ? "Default" : message().enabled ? `${enabledOutputCount(message(), previewValues())} outputs` : "Disabled"}</span><Show when={usesDefault()}><span class="badge">Global</span></Show></summary>
         <div class="message-event-body">
           <Show when={props.areaName}><ControlRow kind="boolean" variant="standalone" class="message-override-toggle" label="Override global message" accessibleLabel={`Override ${event.label}`} description={`Use custom settings for ${props.areaName}.`} checked={!usesDefault()} onChange={(value) => { props.onChange({ type: "set-override", eventId: event.id, value }); }} /></Show>
           <ControlRowGroup class="event-settings-card">

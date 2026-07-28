@@ -2,6 +2,7 @@ import { For, Show, createMemo, createSignal } from "solid-js";
 import type { JSX } from "solid-js";
 import type { EditorSection } from "../editor/create-editor-model";
 import { ModeBadge, type ModeSummary } from "./ModeBadge";
+import { utcWeekdayAndTimeToLocal } from "../domain/schedules";
 export type { ModeSummary } from "./ModeBadge";
 
 export interface AreaSummary {
@@ -160,6 +161,40 @@ function ModeSidebar(props: ModeSidebarProps) {
   </>;
 }
 
+interface ScheduleSummary {
+  readonly name: string;
+  readonly enabled: boolean;
+  readonly days: readonly string[];
+  readonly startTime: string;
+  readonly mode: string | null;
+  readonly announcements: readonly unknown[];
+}
+
+function ScheduleSidebar(props: {
+  readonly schedules: readonly ScheduleSummary[];
+  readonly selectedIndex: number;
+  readonly onSelect: (index: number) => void;
+  readonly onAdd: () => void;
+  readonly onMove: (index: number, direction: number) => void;
+  readonly onDuplicate: (index: number) => void;
+  readonly onDelete: (index: number) => void;
+}) {
+  const computerTime = (schedule: ScheduleSummary) => utcWeekdayAndTimeToLocal(
+    schedule.days[0] ?? "mon", schedule.startTime)?.time ?? schedule.startTime;
+  return <>
+    <div class="panel-heading"><div><h2>Schedules</h2><p>Recurring UTC rules and broadcasts. Later active mode windows win overlaps.</p></div></div>
+    <div class="list-stack">
+      <For each={props.schedules}>{(schedule, index) => <article classList={{ "sidebar-card": true, selected: index() === props.selectedIndex, disabled: !schedule.enabled }} tabindex="0" onClick={() => { props.onSelect(index()); }} onKeyDown={(event) => { activateOnKeyboard(event, () => { props.onSelect(index()); }); }}>
+        <CardHeader title={schedule.name}><span classList={{ badge: true, pve: schedule.enabled }}>{schedule.enabled ? "On" : "Off"}</span></CardHeader>
+        <CardDetail parts={[schedule.mode ? "Mode window" : "Announcements only", `${schedule.announcements.length} notice${schedule.announcements.length === 1 ? "" : "s"}`]} />
+        <footer class="sidebar-card-footer"><div class="order-controls"><button type="button" class="sidebar-card-icon order-button" aria-label={`Move ${schedule.name} earlier`} disabled={index() === 0} onClick={(event) => { event.stopPropagation(); props.onMove(index(), -1); }}><Icon name="arrow-up" /></button><button type="button" class="sidebar-card-icon order-button" aria-label={`Move ${schedule.name} later`} disabled={index() === props.schedules.length - 1} onClick={(event) => { event.stopPropagation(); props.onMove(index(), 1); }}><Icon name="arrow-down" /></button></div><span class="wilderness-kind-label">{schedule.days.length} days · {computerTime(schedule)} local</span><div class="sidebar-card-actions"><button type="button" class="sidebar-card-icon" aria-label={`Duplicate ${schedule.name}`} onClick={(event) => { event.stopPropagation(); props.onDuplicate(index()); }}><Icon name="square-2-stack" /></button><button type="button" class="sidebar-card-icon danger" aria-label={`Delete ${schedule.name}`} onClick={(event) => { event.stopPropagation(); props.onDelete(index()); }}><Icon name="trash" /></button></div></footer>
+      </article>}</For>
+      <Show when={props.schedules.length === 0}><div class="empty-state"><div><strong>No schedules yet</strong><span>Add a broadcast or a recurring mode window.</span></div></div></Show>
+    </div>
+    <div class="schedule-list-footer"><button type="button" class="button small primary" onClick={props.onAdd}>Add schedule</button></div>
+  </>;
+}
+
 interface MessageSummary { readonly id: string; readonly label: string; readonly enabled: boolean; readonly outputCount: number; readonly cooldownSeconds: number; }
 
 function MessageSidebar(props: { readonly messages: readonly MessageSummary[]; readonly selectedId: string; readonly onSelect: (id: string) => void }) {
@@ -186,6 +221,7 @@ interface SidebarConfig {
   readonly stageAreas: AreaSummary;
   readonly regions: readonly RegionSummary[];
   readonly modes: readonly ModeSummary[];
+  readonly schedules: readonly ScheduleSummary[];
   readonly settings: { readonly hotReload: boolean; readonly hotReloadSeconds: number; readonly worldRules: boolean; readonly adminBypass: boolean };
   readonly regionalCombat: { readonly enabled: boolean };
 }
@@ -195,6 +231,7 @@ export interface SidebarState {
   readonly config: SidebarConfig;
   readonly selectedRegionIndex: number | null;
   readonly selectedModeIndex: number;
+  readonly selectedScheduleIndex: number;
   readonly selectedMessageId: string;
   readonly messages: readonly MessageSummary[];
 }
@@ -211,6 +248,11 @@ export interface SidebarActions {
   readonly moveMode: (index: number, direction: number) => void;
   readonly duplicateMode: (index: number, trigger: HTMLElement) => void;
   readonly deleteMode: (index: number, trigger: HTMLElement) => void;
+  readonly selectSchedule: (index: number) => void;
+  readonly addSchedule: () => void;
+  readonly moveSchedule: (index: number, direction: number) => void;
+  readonly duplicateSchedule: (index: number) => void;
+  readonly deleteSchedule: (index: number) => void;
   readonly selectMessage: (id: string) => void;
 }
 
@@ -218,6 +260,7 @@ export function Sidebar(props: { readonly state: SidebarState; readonly actions:
   return <>
     <Show when={props.state.section === "regions"}><RegionSidebar wilderness={props.state.config.wilderness} stageAreas={props.state.config.stageAreas} regions={props.state.config.regions} modes={props.state.config.modes} selectedIndex={props.state.selectedRegionIndex} onSelect={props.actions.selectRegion} onOpenWilderness={props.actions.openWilderness} onOpenStageAreas={props.actions.openStageAreas} onOpenRegion={props.actions.openRegion} onMove={props.actions.moveRegion} onDuplicate={props.actions.duplicateRegion} onDelete={props.actions.deleteRegion} /></Show>
     <Show when={props.state.section === "modes"}><ModeSidebar modes={props.state.config.modes} selectedIndex={props.state.selectedModeIndex} onSelect={props.actions.selectMode} onMove={props.actions.moveMode} onDuplicate={props.actions.duplicateMode} onDelete={props.actions.deleteMode} /></Show>
+    <Show when={props.state.section === "schedules"}><ScheduleSidebar schedules={props.state.config.schedules} selectedIndex={props.state.selectedScheduleIndex} onSelect={props.actions.selectSchedule} onAdd={props.actions.addSchedule} onMove={props.actions.moveSchedule} onDuplicate={props.actions.duplicateSchedule} onDelete={props.actions.deleteSchedule} /></Show>
     <Show when={props.state.section === "messages"}><MessageSidebar messages={props.state.messages} selectedId={props.state.selectedMessageId} onSelect={props.actions.selectMessage} /></Show>
     <Show when={props.state.section === "settings"}>
       <div class="panel-heading"><div><h2>Runtime settings</h2><p>Safe defaults are supplied; most servers only need regions and modes.</p></div></div>

@@ -2,6 +2,8 @@ export const CONFIG_LIMITS = Object.freeze({
   rawBytes: 4 * 1024 * 1024,
   nestingDepth: 32,
   regions: 1024,
+  schedules: 64,
+  announcementsPerSchedule: 64,
   polygonPoints: 1024,
   totalPolygonPoints: 65536,
   combatEntriesPerArea: 128,
@@ -17,6 +19,8 @@ export type ConfigSourceErrorCode =
   | "NestingDepth"
   | "DuplicateKey"
   | "RegionLimit"
+  | "ScheduleLimit"
+  | "AnnouncementLimit"
   | "CombatEntryLimit"
   | "PolygonPointLimit"
   | "TotalPolygonPointLimit";
@@ -195,6 +199,16 @@ export function validateRawConfigurationLimits(document: unknown): void {
   if (regions.length > CONFIG_LIMITS.regions) {
     fail(`regions contains more than ${CONFIG_LIMITS.regions} entries.`, "RegionLimit");
   }
+  const schedules = Array.isArray(document.schedules) ? document.schedules : [];
+  if (schedules.length > CONFIG_LIMITS.schedules) {
+    fail(`schedules contains more than ${CONFIG_LIMITS.schedules} entries.`, "ScheduleLimit");
+  }
+  schedules.forEach((schedule, index) => {
+    if (!isJsonObject(schedule)) return;
+    if (Array.isArray(schedule.announcements) && schedule.announcements.length > CONFIG_LIMITS.announcementsPerSchedule) {
+      fail(`schedules[${index}].announcements contains more than ${CONFIG_LIMITS.announcementsPerSchedule} entries.`, "AnnouncementLimit");
+    }
+  });
 
   const areas: Array<{ value: unknown; path: string }> = [{ value: document.wilderness, path: "wilderness" }];
   regions.forEach((region, index) => areas.push({ value: region, path: `regions[${index}]` }));

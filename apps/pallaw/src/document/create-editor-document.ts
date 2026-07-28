@@ -38,6 +38,7 @@ interface EditorDocumentOptions<TConfig> {
   readonly serialize: (config: TConfig) => string;
   readonly validate: (config: TConfig) => ValidationResult;
   readonly parse?: (source: string | Uint8Array) => unknown;
+  readonly parsePersisted?: (source: string) => unknown;
   readonly persistence?: DraftPersistence;
   readonly historyLimit?: number;
 }
@@ -69,7 +70,13 @@ export function createEditorDocument<TConfig>(options: EditorDocumentOptions<TCo
     if (!persistence) return initialValue;
     try {
       const saved = persistence.load();
-      return saved === null ? initialValue : options.parse ? options.parse(saved) : JSON.parse(saved) as unknown;
+      return saved === null
+        ? initialValue
+        : options.parsePersisted
+          ? options.parsePersisted(saved)
+          : options.parse
+            ? options.parse(saved)
+            : JSON.parse(saved) as unknown;
     } catch {
       return initialValue;
     }

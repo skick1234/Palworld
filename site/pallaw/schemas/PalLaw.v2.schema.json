@@ -94,13 +94,13 @@
     "chatChannel": {
       "oneOf": [
         { "type": "boolean" },
-        { "type": "string", "minLength": 1, "maxLength": 512 },
+        { "type": "string", "minLength": 0, "maxLength": 512 },
         {
           "type": "object",
           "additionalProperties": false,
           "properties": {
             "enabled": { "type": "boolean" },
-            "text": { "type": "string", "minLength": 1, "maxLength": 512 }
+            "text": { "type": "string", "minLength": 0, "maxLength": 512 }
           }
         }
       ]
@@ -108,13 +108,13 @@
     "activityAlertChannel": {
       "oneOf": [
         { "type": "boolean" },
-        { "type": "string", "minLength": 1, "maxLength": 256 },
+        { "type": "string", "minLength": 0, "maxLength": 256 },
         {
           "type": "object",
           "additionalProperties": false,
           "properties": {
             "enabled": { "type": "boolean" },
-            "text": { "type": "string", "minLength": 1, "maxLength": 256 }
+            "text": { "type": "string", "minLength": 0, "maxLength": 256 }
           }
         }
       ]
@@ -122,13 +122,13 @@
     "briefAlertChannel": {
       "oneOf": [
         { "type": "boolean" },
-        { "type": "string", "minLength": 1, "maxLength": 256 },
+        { "type": "string", "minLength": 0, "maxLength": 256 },
         {
           "type": "object",
           "additionalProperties": false,
           "properties": {
             "enabled": { "type": "boolean" },
-            "text": { "type": "string", "minLength": 1, "maxLength": 256 },
+            "text": { "type": "string", "minLength": 0, "maxLength": 256 },
             "tone": { "type": "string", "enum": ["normal", "negative"], "default": "normal" }
           }
         }
