@@ -1,4 +1,4 @@
-export const CONFIG_VERSION = 3;
+export const CONFIG_VERSION = 4;
 export const CONFIG_FILE_NAME = "PalLaw.json";
 export const SCHEMA_FILE_NAME = "PalLaw.schema.json";
 
@@ -80,7 +80,7 @@ export const ACTIONS = [
   {
     id: "fastTravelDeparture",
     label: "Fast travel departure",
-    description: "Choose whether trips started inside this area may use every destination, base camps only, or no destination.",
+    description: "Choose the permitted route shape for trips started inside this area. The destination area's arrival policy is checked separately.",
     fastTravelPolicy: true
   },
   {
@@ -97,9 +97,33 @@ export const FAST_TRAVEL_POLICIES = Object.freeze([
   { id: "none", label: "Disabled" }
 ]);
 
+export const FAST_TRAVEL_DEPARTURE_POLICIES = Object.freeze([
+  { id: "all", label: "All to all" },
+  { id: "baseToAll", label: "Base to all" },
+  { id: "baseToBase", label: "Base to base" },
+  { id: "allToBase", label: "All to base" },
+  { id: "none", label: "Disabled" }
+]);
+
 const FAST_TRAVEL_POLICY_IDS = new Set(
   FAST_TRAVEL_POLICIES.map(({ id }) => id)
 );
+const FAST_TRAVEL_DEPARTURE_POLICY_IDS = new Set(
+  FAST_TRAVEL_DEPARTURE_POLICIES.map(({ id }) => id)
+);
+
+export function fastTravelPolicies(actionId: string) {
+  return actionId === "fastTravelDeparture"
+    ? FAST_TRAVEL_DEPARTURE_POLICIES
+    : FAST_TRAVEL_POLICIES;
+}
+
+function isFastTravelPolicy(actionId: string, value: unknown): value is ActionValue {
+  return typeof value === "string" &&
+    (actionId === "fastTravelDeparture"
+      ? FAST_TRAVEL_DEPARTURE_POLICY_IDS.has(value)
+      : FAST_TRAVEL_POLICY_IDS.has(value));
+}
 
 export const DEFAULT_ACTION_NAMES = Object.freeze({
   build: "Building",
@@ -391,8 +415,8 @@ function normalizeActions(value: unknown): Record<string, ActionValue | undefine
   for (const action of ACTIONS) {
     if (action.fastTravelPolicy) {
       const candidate = value[action.id];
-      if (typeof candidate === "string" && FAST_TRAVEL_POLICY_IDS.has(candidate)) {
-        result[action.id] = candidate as ActionValue;
+      if (isFastTravelPolicy(action.id, candidate)) {
+        result[action.id] = candidate;
       }
     } else if (typeof value[action.id] === "boolean") {
       result[action.id] = value[action.id] as boolean;
@@ -459,7 +483,7 @@ function normalizeDenseActions(value: unknown): Record<string, ActionValue | und
   return Object.fromEntries(ACTIONS.map((action) => [
     action.id,
     action.fastTravelPolicy
-      ? (() => { const candidate = source[action.id]; return typeof candidate === "string" && FAST_TRAVEL_POLICY_IDS.has(candidate) ? candidate : "all"; })()
+      ? (() => { const candidate = source[action.id]; return isFastTravelPolicy(action.id, candidate) ? candidate : "all"; })()
       : boolean(source[action.id], true)
   ])) as Record<string, ActionValue | undefined>;
 }
@@ -916,8 +940,12 @@ function validateRawActions(value: unknown, context: string, errors: ErrorSink):
   const allowed = new Set(ACTIONS.map((action) => action.id));
   if (!rejectUnknownKeys(value, allowed, context, errors)) return;
   for (const [key, entry] of Object.entries(value)) {
-    if (key === "fastTravelDeparture" || key === "fastTravelArrival") {
-      if (typeof entry !== "string" || !FAST_TRAVEL_POLICY_IDS.has(entry)) {
+    if (key === "fastTravelDeparture") {
+      if (!isFastTravelPolicy(key, entry)) {
+        errors.push(`${context}.${key} must be all, baseToAll, baseToBase, allToBase, or none.`);
+      }
+    } else if (key === "fastTravelArrival") {
+      if (!isFastTravelPolicy(key, entry)) {
         errors.push(`${context}.${key} must be all, baseOnly, or none.`);
       }
     } else if (typeof entry !== "boolean") {
@@ -1446,6 +1474,18 @@ function currentMigrationRegistry(): MigrationDefinition[] {
       message: `Created ${stageName} from Wilderness because older configurations had no separate policy for Palworld stages.`
     });
   };
+  const migrateV3ToV4 = (document: JsonObject) => {
+    const migrateArea = (area: unknown) => {
+      if (!isPlainObject(area) || !isPlainObject(area.actions)) return;
+      if (area.actions.fastTravelDeparture === "baseOnly") {
+        area.actions.fastTravelDeparture = "baseToAll";
+      }
+    };
+    if (Array.isArray(document.modes)) document.modes.forEach(migrateArea);
+    migrateArea(document.wilderness);
+    migrateArea(document.stageAreas);
+    if (Array.isArray(document.regions)) document.regions.forEach(migrateArea);
+  };
   return [
     {
       version: 1,
@@ -1456,7 +1496,8 @@ function currentMigrationRegistry(): MigrationDefinition[] {
         const candidate = clone(document);
         migrateV1ToV2(candidate, []);
         migrateV2ToV3(candidate);
-        candidate.version = 3;
+        migrateV3ToV4(candidate);
+        candidate.version = 4;
         const validation = validateConfig(candidate);
         if (!validation.valid) throw new Error(validation.errors.join("\n"));
       },
@@ -1467,7 +1508,8 @@ function currentMigrationRegistry(): MigrationDefinition[] {
       validate(document) {
         const candidate = clone(document);
         migrateV2ToV3(candidate);
-        candidate.version = 3;
+        migrateV3ToV4(candidate);
+        candidate.version = 4;
         const validation = validateConfig(candidate);
         if (!validation.valid) throw new Error(validation.errors.join("\n"));
       },
@@ -1475,6 +1517,17 @@ function currentMigrationRegistry(): MigrationDefinition[] {
     },
     {
       version: 3,
+      validate(document) {
+        const candidate = clone(document);
+        migrateV3ToV4(candidate);
+        candidate.version = 4;
+        const validation = validateConfig(candidate);
+        if (!validation.valid) throw new Error(validation.errors.join("\n"));
+      },
+      migrateToNext: migrateV3ToV4
+    },
+    {
+      version: 4,
       validate(document) {
         const validation = validateConfig(document);
         if (!validation.valid) throw new Error(validation.errors.join("\n"));

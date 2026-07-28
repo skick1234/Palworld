@@ -1,4 +1,4 @@
-export type ActionIntentValue = boolean | "all" | "baseOnly" | "none";
+export type ActionIntentValue = boolean | "all" | "baseOnly" | "baseToAll" | "baseToBase" | "allToBase" | "none";
 export type CombatIntentValue = "default" | "allow" | "deny";
 
 export type MessageIntent =

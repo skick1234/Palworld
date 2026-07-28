@@ -48,9 +48,9 @@ export type Actor =
 export type CombatOverrides = CombatEntry[];
 export type Point = [number, number];
 
-export interface PalLawConfigurationVersion3 {
+export interface PalLawConfigurationVersion4 {
   $schema?: string;
-  version: 3;
+  version: 4;
   regionalCombat?: RegionalCombat;
   settings?: Settings;
   messages?: GlobalMessages;
@@ -118,7 +118,7 @@ export interface Actions {
   editSign?: boolean;
   editLock?: boolean;
   decay?: boolean;
-  fastTravelDeparture?: "all" | "baseOnly" | "none";
+  fastTravelDeparture?: "all" | "baseToAll" | "baseToBase" | "allToBase" | "none";
   fastTravelArrival?: "all" | "baseOnly" | "none";
 }
 export interface ModeCombat {
