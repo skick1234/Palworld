@@ -183,14 +183,21 @@ Supported actor names:
 - `player`
 - `partnerPal`
 - `basePal`
+- `baseStructure`: a map object with both a valid stored Palworld builder identity and valid base-camp attribution
 - `wildPal`
 - `npc`
-- `structure` as a target: a Player-Built Structure with valid Palworld builder attribution
-- `environment` as a target: an Environmental Map Object, including a map object whose builder attribution is empty or unavailable
+- `structure` as a target: a Player-Built Structure with a valid stored Palworld builder identity and no base-camp attribution
+- `environment` as a target: a known damageable map object without a valid
+  stored Palworld builder identity, including natural stone and ore even inside
+  a base
 
-Map-object behavior comes from the effective configured matrix. PalLaw applies
-the `environment` target when builder attribution cannot be read; it does not
-maintain a separate ownership database.
+Map-object behavior comes from the effective configured matrix. PalLaw reads
+the replicated stored `BuildPlayerUId` property directly and does not call its
+Blueprint getter. A valid stored builder identity is required for both
+constructed kinds; base-camp attribution then selects `baseStructure` instead
+of `structure`. Without that builder identity, a known map object uses
+`environment` even when base, group, catalog, or collection metadata is
+present. PalLaw does not maintain a separate ownership database.
 
 `source` and `target` may be a string or an array. Each entry contains one binary `allow` decision:
 

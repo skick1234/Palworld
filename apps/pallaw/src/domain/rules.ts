@@ -46,7 +46,7 @@ export const ACTORS = [
   {
     id: "baseStructure",
     label: "Base Structure",
-    description: "Structures attributed to a base camp or guild, including defensive structures when Palworld reports the structure as the responsible damage source.",
+    description: "Damageable map objects with both a valid stored Palworld builder identity and base-camp attribution, including defensive structures when Palworld reports one as the responsible damage source.",
     mapObject: true
   },
   { id: "wildPal", label: "Wild Pal", description: "A wild Pal not owned by a player or base." },
@@ -55,7 +55,7 @@ export const ACTORS = [
     id: "structure",
     label: "Player-Built Structure",
     matrixLabel: "Structure",
-    description: "Objects attributed to a player outside of a base camp.",
+    description: "Damageable map objects with a valid stored Palworld builder identity and no base-camp attribution.",
     mapObject: true,
     targetOnly: true
   },
@@ -63,7 +63,7 @@ export const ACTORS = [
     id: "environment",
     label: "Environmental Map Object",
     matrixLabel: "Environment",
-    description: "Natural mineral resource nodes, including stone and ore. Trees and other foliage are excluded.",
+    description: "Known damageable map objects without a valid stored Palworld builder identity, including natural stone and ore even inside a base. Trees and other foliage are excluded.",
     mapObject: true,
     targetOnly: true
   }
