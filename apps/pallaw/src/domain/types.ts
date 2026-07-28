@@ -1,4 +1,4 @@
-export type ActionValue = boolean | "all" | "baseOnly" | "baseToAll" | "baseToBase" | "allToBase" | "none";
+export type ActionValue = boolean | "all" | "baseOnly" | "none";
 export type CombatOverride = "default" | "allow" | "deny";
 export type Point = [number, number];
 

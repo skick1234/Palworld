@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "PalLaw.schema.json",
-  "title": "PalLaw Configuration Version 4",
+  "title": "PalLaw Configuration Version 3",
   "type": "object",
   "additionalProperties": false,
   "required": ["version", "modes", "wilderness", "stageAreas"],
   "properties": {
     "$schema": { "type": "string" },
-    "version": { "const": 4 },
+    "version": { "const": 3 },
     "regionalCombat": { "$ref": "#/$defs/regionalCombat" },
     "settings": { "$ref": "#/$defs/settings" },
     "messages": { "$ref": "#/$defs/globalMessages" },
@@ -164,14 +164,8 @@
         "editSign": { "type": "boolean" },
         "editLock": { "type": "boolean" },
         "decay": { "type": "boolean" },
-        "fastTravelDeparture": {
-          "enum": ["all", "baseToAll", "baseToBase", "allToBase", "none"],
-          "description": "Route policy applied by the origin area before the destination area's independent Arrival policy."
-        },
-        "fastTravelArrival": {
-          "enum": ["all", "baseOnly", "none"],
-          "description": "Destination policy applied independently by the area containing the requested arrival."
-        }
+        "fastTravelDeparture": { "enum": ["all", "baseOnly", "none"] },
+        "fastTravelArrival": { "enum": ["all", "baseOnly", "none"] }
       }
     },
     "modeActions": {

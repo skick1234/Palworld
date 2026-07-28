@@ -1,6 +1,6 @@
 {
   "$schema": "./PalLaw.schema.json",
-  "version": 4,
+  "version": 3,
   "regionalCombat": {
     "enabled": true
   },
