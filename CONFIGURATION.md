@@ -199,6 +199,13 @@ it is sparse. Each present cell replaces that mode cell. An omitted row or cell
 inherits from the selected mode. Rules Studio presents the effective matrix and
 removes the explicit cell when it is set to **Default**.
 
+For a Player source and a Partner Pal or Base Pal target, PalLaw first uses
+Palworld's current friendship result. Own and same-guild Pal interactions stay
+on the complete vanilla path and do not read the matrix cell. A non-allied
+relationship, or one whose friendship cannot be resolved, uses the configured
+cell normally. This preserves utility effects without opening enemy-player
+damage.
+
 ```json
 "combat": {
   "player": { "wildPal": true, "npc": false },
@@ -228,7 +235,7 @@ of `structure`. Without that builder identity, a known map object uses
 `environment` even when base, group, catalog, or collection metadata is
 present. PalLaw does not maintain a separate ownership database.
 
-Each matrix cell contains one binary decision:
+Each matrix-controlled relationship contains one binary decision:
 
 - `true` enables targeting and preserves normal Palworld damage.
 - `false` prevents targeting and damage.

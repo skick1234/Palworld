@@ -254,6 +254,7 @@
     },
     "modeCombat": {
       "type": "object",
+      "description": "Binary combat policy by actor kind. Allied Player-to-Partner/Base Pal interactions remain vanilla and do not read these cells; non-allied or unresolved relationships use the configured cell.",
       "additionalProperties": false,
       "required": ["player", "partnerPal", "basePal", "baseStructure", "wildPal", "npc"],
       "properties": {
