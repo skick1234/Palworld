@@ -10,13 +10,19 @@ export interface MapDefinition {
   readonly bounds: Readonly<{ minX: number; minY: number; maxX: number; maxY: number }>;
 }
 
+const PALWORLD_IN_GAME_COORDINATES = Object.freeze({
+  scale: 459,
+  mapXOffset: -158000,
+  mapYOffset: 123888
+});
+
 export const MAPS: readonly MapDefinition[] = Object.freeze([
   Object.freeze({
     id: "world",
-    label: "World",
+    label: "Palpagos Islands",
     projection: "paldb-world",
     canvas: Object.freeze({ width: 2048, height: 2048 }),
-    inGameCoordinates: Object.freeze({ scale: 459, mapXOffset: -158000, mapYOffset: 123888 }),
+    inGameCoordinates: PALWORLD_IN_GAME_COORDINATES,
     tiles: Object.freeze({
       root: "assets/paldb-map",
       zoom: 2,
@@ -30,11 +36,7 @@ export const MAPS: readonly MapDefinition[] = Object.freeze([
     label: "World Tree",
     projection: "paldb-world",
     canvas: Object.freeze({ width: 2048, height: 2048 }),
-    inGameCoordinates: Object.freeze({
-      scale: 1335.144531,
-      mapXOffset: 647699.0433913,
-      mapYOffset: 518756.7572597
-    }),
+    inGameCoordinates: PALWORLD_IN_GAME_COORDINATES,
     tiles: Object.freeze({
       root: "assets/paldb-tree-map",
       zoom: 2,
