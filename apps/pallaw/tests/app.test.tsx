@@ -37,6 +37,7 @@ describe("PalLaw application", () => {
     expect(noticesHeading.closest('[data-workspace-pane="edit"]')).toBeTruthy();
     const assignMode = screen.getByLabelText("Announcements only. Assign mode");
     expect(screen.getByLabelText("ID").closest(".schedule-id-mode-grid")).toBe(assignMode.closest(".schedule-id-mode-grid"));
+    expect(screen.queryByText("Stable reference used by assigned Areas.")).toBeNull();
     expect(document.querySelector(".announcement-channels, .announcement-channel")).toBeNull();
 
     const globalChat = screen.getByLabelText("Global chat message") as HTMLTextAreaElement;
@@ -85,7 +86,7 @@ describe("PalLaw application", () => {
     expect(reloadedDocument.read().config.schedules[0]?.mode).toBe("pve");
   });
 
-  test("orders schedules from the sidebar and keeps Add schedule in the list footer", async () => {
+  test("orders schedules from the sidebar and keeps Add schedule above the list", async () => {
     const editorDocument = createPalLawDocument(createMemoryDraftAdapter());
     render(() => <App editorDocument={editorDocument} createMap={() => ({ update: vi.fn(), dispatch: vi.fn(), dispose: vi.fn() })} />);
 
@@ -93,7 +94,10 @@ describe("PalLaw application", () => {
     const add = screen.getByRole("button", { name: "Add schedule" });
     await fireEvent.click(add);
     await fireEvent.click(add);
-    expect(add.closest(".schedule-list-footer")).toBeTruthy();
+    const list = add.closest(".schedule-list-actions")?.nextElementSibling;
+    expect(list?.classList.contains("list-stack")).toBe(true);
+    expect(document.querySelector(".wilderness-kind-label")).toBeNull();
+    expect(screen.getAllByText(/Announcements only · 1 notice · 7 days · .* local/)).toHaveLength(2);
 
     await fireEvent.click(screen.getByRole("button", { name: "Move Announcement 1 later" }));
     expect(editorDocument.read().config.schedules.map((schedule) => schedule.name)).toEqual(["Announcement 2", "Announcement 1"]);

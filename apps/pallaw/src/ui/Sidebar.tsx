@@ -71,8 +71,8 @@ export function RegionSidebar(props: RegionSidebarProps) {
         onKeyDown={(event) => { activateOnKeyboard(event, () => { props.onOpenWilderness(event.currentTarget); }); }}
       >
         <CardHeader title={props.wilderness.name}><ModeBadge modeId={props.wilderness.mode} modes={props.modes} /></CardHeader>
+        <CardDetail parts={[props.wilderness.name.trim().toLocaleLowerCase() === "wilderness" ? "Outside region" : "Wilderness"]} />
         <footer class="sidebar-card-footer wilderness-footer">
-          <span class="wilderness-kind-label">{props.wilderness.name.trim().toLocaleLowerCase() === "wilderness" ? "Outside region" : "Wilderness"}</span>
           <div class="sidebar-card-actions">
             <button type="button" class="sidebar-card-icon settings" title="Wilderness settings" aria-label={`Open settings for Wilderness ${props.wilderness.name}`} onClick={(event) => { event.stopPropagation(); props.onOpenWilderness(event.currentTarget); }}><Icon name="cog-6-tooth" /></button>
           </div>
@@ -87,8 +87,8 @@ export function RegionSidebar(props: RegionSidebarProps) {
         onKeyDown={(event) => { activateOnKeyboard(event, () => { props.onOpenStageAreas(event.currentTarget); }); }}
       >
         <CardHeader title={props.stageAreas.name}><ModeBadge modeId={props.stageAreas.mode} modes={props.modes} /></CardHeader>
+        <CardDetail parts={["Fixed stage priority"]} />
         <footer class="sidebar-card-footer wilderness-footer">
-          <span class="wilderness-kind-label">Fixed stage priority</span>
           <div class="sidebar-card-actions">
             <button type="button" class="sidebar-card-icon settings" title="Stage Areas settings" aria-label={`Open settings for Stage Areas ${props.stageAreas.name}`} onClick={(event) => { event.stopPropagation(); props.onOpenStageAreas(event.currentTarget); }}><Icon name="cog-6-tooth" /></button>
           </div>
@@ -183,15 +183,15 @@ function ScheduleSidebar(props: {
     schedule.days[0] ?? "mon", schedule.startTime)?.time ?? schedule.startTime;
   return <>
     <div class="panel-heading"><div><h2>Schedules</h2><p>Recurring UTC rules and broadcasts. Later active mode windows win overlaps.</p></div></div>
+    <div class="schedule-list-actions"><button type="button" class="button small primary" onClick={props.onAdd}>Add schedule</button></div>
     <div class="list-stack">
       <For each={props.schedules}>{(schedule, index) => <article classList={{ "sidebar-card": true, selected: index() === props.selectedIndex, disabled: !schedule.enabled }} tabindex="0" onClick={() => { props.onSelect(index()); }} onKeyDown={(event) => { activateOnKeyboard(event, () => { props.onSelect(index()); }); }}>
         <CardHeader title={schedule.name}><span classList={{ badge: true, pve: schedule.enabled }}>{schedule.enabled ? "On" : "Off"}</span></CardHeader>
-        <CardDetail parts={[schedule.mode ? "Mode window" : "Announcements only", `${schedule.announcements.length} notice${schedule.announcements.length === 1 ? "" : "s"}`]} />
-        <footer class="sidebar-card-footer"><div class="order-controls"><button type="button" class="sidebar-card-icon order-button" aria-label={`Move ${schedule.name} earlier`} disabled={index() === 0} onClick={(event) => { event.stopPropagation(); props.onMove(index(), -1); }}><Icon name="arrow-up" /></button><button type="button" class="sidebar-card-icon order-button" aria-label={`Move ${schedule.name} later`} disabled={index() === props.schedules.length - 1} onClick={(event) => { event.stopPropagation(); props.onMove(index(), 1); }}><Icon name="arrow-down" /></button></div><span class="wilderness-kind-label">{schedule.days.length} days · {computerTime(schedule)} local</span><div class="sidebar-card-actions"><button type="button" class="sidebar-card-icon" aria-label={`Duplicate ${schedule.name}`} onClick={(event) => { event.stopPropagation(); props.onDuplicate(index()); }}><Icon name="square-2-stack" /></button><button type="button" class="sidebar-card-icon danger" aria-label={`Delete ${schedule.name}`} onClick={(event) => { event.stopPropagation(); props.onDelete(index()); }}><Icon name="trash" /></button></div></footer>
+        <CardDetail parts={[schedule.mode ? "Mode window" : "Announcements only", `${schedule.announcements.length} notice${schedule.announcements.length === 1 ? "" : "s"}`, `${schedule.days.length} days`, `${computerTime(schedule)} local`]} />
+        <footer class="sidebar-card-footer"><div class="order-controls"><button type="button" class="sidebar-card-icon order-button" aria-label={`Move ${schedule.name} earlier`} disabled={index() === 0} onClick={(event) => { event.stopPropagation(); props.onMove(index(), -1); }}><Icon name="arrow-up" /></button><button type="button" class="sidebar-card-icon order-button" aria-label={`Move ${schedule.name} later`} disabled={index() === props.schedules.length - 1} onClick={(event) => { event.stopPropagation(); props.onMove(index(), 1); }}><Icon name="arrow-down" /></button></div><div class="sidebar-card-actions"><button type="button" class="sidebar-card-icon" aria-label={`Duplicate ${schedule.name}`} onClick={(event) => { event.stopPropagation(); props.onDuplicate(index()); }}><Icon name="square-2-stack" /></button><button type="button" class="sidebar-card-icon danger" aria-label={`Delete ${schedule.name}`} onClick={(event) => { event.stopPropagation(); props.onDelete(index()); }}><Icon name="trash" /></button></div></footer>
       </article>}</For>
       <Show when={props.schedules.length === 0}><div class="empty-state"><div><strong>No schedules yet</strong><span>Add a broadcast or a recurring mode window.</span></div></div></Show>
     </div>
-    <div class="schedule-list-footer"><button type="button" class="button small primary" onClick={props.onAdd}>Add schedule</button></div>
   </>;
 }
 

@@ -1006,7 +1006,6 @@ body { background: var(--bg); }
 .sidebar-card-actions { display: flex; align-items: center; gap: 5px; margin-left: auto; }
 .wilderness-card { border-bottom-color: var(--line-strong); background: color-mix(in srgb, var(--accent) 5%, transparent); }
 .wilderness-footer { min-height: 28px; }
-.wilderness-kind-label { color: var(--faint); font-family: var(--font-mono); font-size: 0.75rem; }
 .localization-card .section-card-header p { margin: 4px 0 0; color: var(--muted); font-size: 0.82rem; line-height: 1.45; }
 .localization-grid { gap: 14px; }
 .sidebar-card-icon {
@@ -1198,8 +1197,8 @@ body { background: var(--bg); }
 .mode-select-options button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
 /* Schedules keep timing, Area assignment, and broadcasts in one linear inspector. */
-.schedule-list-footer { padding-top: 14px; }
-.schedule-list-footer .button { width: 100%; min-width: 0; }
+.schedule-list-actions { padding-bottom: 14px; }
+.schedule-list-actions .button { width: 100%; min-width: 0; }
 .schedule-form-stack { display: grid; gap: 18px; }
 .schedule-fields { display: grid; gap: 18px; }
 .schedule-id-mode-grid,
