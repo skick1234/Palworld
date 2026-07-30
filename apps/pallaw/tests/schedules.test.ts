@@ -31,7 +31,7 @@ function schedule(overrides: Partial<ScheduleValue> = {}): ScheduleValue {
 }
 
 describe("PalLaw schedules", () => {
-  test("hydrates and serializes the optional Version 4 contract", () => {
+  test("hydrates and serializes the Version 5 schedule contract", () => {
     const config = createDefaultConfig();
     config.schedules.push(schedule());
     config.wilderness.schedules.push("weekend-pvp");
@@ -81,7 +81,7 @@ describe("PalLaw schedules", () => {
     expect(validation.warnings).toEqual([]);
     const serialized = serializeConfig(config);
     const serializedSchedules = serialized.schedules as ScheduleValue[];
-    expect(serializedSchedules[0]?.announcements[0]?.globalChat).toEqual({ enabled: true, text: "" });
+    expect(serializedSchedules[0]?.announcements[0]?.globalChat).toEqual({ enabled: true });
     expect(serializedSchedules[0]?.announcements[0]?.serverNotice).toEqual({ enabled: true, text: " \t\r\n" });
   });
 

@@ -8,7 +8,7 @@ Pal/Binaries/Win64/Mods/PalLaw/PalLaw.json
 
 The file is plain JSON. JSON is used because the DLL and the browser editor can share the same data model, the bundled JSON Schema can validate it, and no additional parser dependency is required in the production mod.
 
-Configuration Version 4 accepts UTF-8 with or without a UTF-8 BOM. The raw file is limited to 4 MiB inclusive, the BOM counts toward that limit, JSON container nesting is limited to 32, and duplicate object keys are rejected at every depth before object construction. UTF-16, UTF-32, and invalid UTF-8 are rejected.
+Configuration Version 5 accepts UTF-8 with or without a UTF-8 BOM. The raw file is limited to 4 MiB inclusive, the BOM counts toward that limit, JSON container nesting is limited to 32, and duplicate object keys are rejected at every depth before object construction. UTF-16, UTF-32, and invalid UTF-8 are rejected.
 
 Every current document carries its ordered mode definitions. Rules Studio creates
 the Safe, PvE, and PvP starter modes for a new document; they are ordinary
@@ -34,10 +34,10 @@ released, or unloaded.
 ## Top-level fields
 
 - `$schema`: optional relative path used by editors.
-- `version`: required and currently `4`.
-- `regionalCombat`: optional master combat-authority control. It defaults to enabled.
-- `settings`: optional runtime tuning.
-- `messages`: optional global player-message defaults.
+- `version`: required and currently `5`.
+- `regionalCombat`: optional master combat-authority control. Omission disables it.
+- `settings`: required runtime tuning; `playerSweepSeconds` is always required.
+- `messages`: optional global player-message configuration. Omitted events, channels, text, and action names are disabled or empty.
 - `schedules`: optional ordered array of recurring UTC mode windows and broadcasts.
 - `modes`: required ordered array containing 1 to 128 complete mode definitions.
 - `wilderness`: required named Wilderness.
@@ -53,7 +53,7 @@ An **area** is Wilderness, the shared Stage Areas policy, or a polygon Region.
 Stage Areas applies with fixed, exclusive priority whenever Palworld identifies
 an actor as inside a Dungeon, Boss Battle, Arena, Room, or Raid Boss stage. In
 that case polygon Regions and Wilderness are not evaluated, even when the
-stage's hidden world coordinates overlap a Region. Configuration Version 4 has
+stage's hidden world coordinates overlap a Region. Configuration Version 5 has
 one shared Stage Areas policy; it does not configure stage types or instances
 separately.
 
@@ -80,11 +80,13 @@ Each region supports:
   "minimumLevel": 20,
   "map": "world",
   "polygon": [[0, 0], [100, 0], [100, 100]],
-  "actions": {},
-  "combat": [],
-  "messages": {}
+  "combat": { "player": { "player": false } }
 }
 ```
+
+Override objects must contain at least one value. Omit `actions`, `combat`, or
+`messages` to inherit the selected mode or global message layer; an empty
+object is invalid because it does not express an override.
 
 `map` is editor metadata. A region has no color field: its effective mode is the
 sole color authority for badges and polygons. Runtime area selection is based
@@ -128,7 +130,7 @@ Schedules and announcement rows have no delivery identity or deduplication. Dupl
 - an immutable unique lowercase-slug `id`;
 - a case-insensitively unique `name` of at most 96 characters;
 - a `#RRGGBB` color;
-- a `minimumLevel` default containing `null` or an integer from 1 to 999;
+- an optional `minimumLevel` containing `null` or an integer from 1 to 999; `null` and omission both mean no mode-level constraint;
 - every Player Action value, including Fast Travel Departure and Arrival policies;
 - every source and target cell in the dense binary combat matrix;
 - optional sparse message overrides.
@@ -192,22 +194,17 @@ Editing or switching a mode never removes an area override.
 
 ## Combat overrides
 
-Combat overrides are ordered and applied after the mode. Later matching entries win. Rules Studio presents the resulting relationships as an editable matrix. When a matrix cell is changed, grouped and bidirectional entries are normalized into deterministic one-source, one-target entries while preserving every effective relationship. A cell set to **Default** removes its explicit entry and restores the selected mode preset for that relationship. Wilderness, Stage Areas, and each Region may contain at most 128 raw combat entries; the matrix editor needs at most 48.
+Area combat uses the same nested source-to-target boolean syntax as a mode, but
+it is sparse. Each present cell replaces that mode cell. An omitted row or cell
+inherits from the selected mode. Rules Studio presents the effective matrix and
+removes the explicit cell when it is set to **Default**.
 
 ```json
-"combat": [
-  {
-    "source": ["player", "partnerPal"],
-    "target": "wildPal",
-    "allow": true
-  },
-  {
-    "source": "npc",
-    "target": "player",
-    "allow": false,
-    "bidirectional": true
-  }
-]
+"combat": {
+  "player": { "wildPal": true, "npc": false },
+  "partnerPal": { "wildPal": true },
+  "npc": { "player": false }
+}
 ```
 
 Supported actor names:
@@ -231,20 +228,23 @@ of `structure`. Without that builder identity, a known map object uses
 `environment` even when base, group, catalog, or collection metadata is
 present. PalLaw does not maintain a separate ownership database.
 
-`source` and `target` may be a string or an array. Each entry contains one binary `allow` decision:
+Each matrix cell contains one binary decision:
 
-- `"allow": true` enables targeting and preserves normal Palworld damage.
-- `"allow": false` prevents targeting and damage.
+- `true` enables targeting and preserves normal Palworld damage.
+- `false` prevents targeting and damage.
 
 The Version 2 contract rejects `damage` multipliers. When a Version 1 file is migrated, `damage <= 0` becomes `allow: false` and `damage > 0` becomes `allow: true`; the migration report records every converted entry and the immutable source backup preserves the original value.
 
-`bidirectional: true` also applies the reverse relationship when the target can be a combat source.
+Relationships are directed. Configure both cells explicitly when the same
+decision should apply in both directions. Selector arrays and `bidirectional`
+are valid only in older configuration versions and migrate to explicit v5 cells.
 
 ## Level requirements
 
-Every mode defines a nullable minimum player level. Wilderness and Stage Areas
-inherit it. A Region inherits that setting when it omits `minimumLevel`, or
-replaces it with an explicit value:
+Every mode may define a minimum player level; omission means no constraint.
+Wilderness and Stage Areas always inherit it. A Region inherits the mode when
+it omits `minimumLevel`, replaces it with an integer, or explicitly clears it
+with `null`:
 
 ```json
 "minimumLevel": null
@@ -258,7 +258,10 @@ A lower-level non-admin player is moved back to the last safe transform outside 
 
 ## Messages
 
-All player messages are configurable. The master object is:
+All player messages are configurable. Omitting the global `messages` object—or
+an event or channel within it—leaves that base value disabled and empty. The
+curated default file explicitly contains the shipped message text; C++ does not
+supply it as a fallback. The master object is:
 
 ```json
 "messages": {
@@ -317,7 +320,10 @@ Supported alert keys:
 - `brief`: short queued left-side tip using Palworld's important lane;
 - `activity`: immediate, stacking left-side tip using Palworld's normal lane.
 
-`brief` also accepts `tone`: `normal` (blue) or `negative` (red). `activity` has no tone option and always uses Palworld's normal light style.
+`brief` also accepts `tone`: `normal` (blue) or `negative` (red). The first
+configured brief object in an inheritance chain must select a tone; descendant
+overrides may omit it and inherit. `activity` has no tone option and always uses
+Palworld's normal light style.
 
 `actionDenied` and `levelDenied` default to `brief`; `regionChanged` defaults to
 `activity`. Modes and areas may sparsely override those same events.
@@ -363,9 +369,14 @@ complete starter modes, moves old display names into `mode.name`, removes
 reported Region colors, merges old PvP-warning outputs into `regionChanged`,
 and copies Wilderness into a uniquely named Stage Areas fallback.
 Configuration Version 4 replaces Departure `"baseOnly"` with explicit route
-policies. Version 3 Departure `"baseOnly"` migrates to `"baseToAll"`; Arrival
-`"baseOnly"` is unchanged. Pre-release Version 3 and Version 4 drafts are not
-accepted.
+policies and adds scheduled mode takeovers and announcements. Version 3
+Departure `"baseOnly"` migrates to `"baseToAll"`; Arrival `"baseOnly"` is
+unchanged. Configuration Version 5 separates the curated default file from
+runtime fallbacks: omitted base behavior is disabled, empty, zero where valid,
+or unconstrained; override omission inherits. It also replaces Area combat
+selector arrays with sparse mode-style matrices and gives Region
+`minimumLevel` distinct omit/integer/`null` inheritance semantics. The v4→v5
+migration materializes v4 effective defaults before adopting those rules.
 
 Rules Studio and the DLL migrate every released older Configuration Version forward through each adjacent version. The declared source and every intermediate result must validate before the migrated document can be used. A document without `version` is reported and treated as version 1 only when it passes the complete version-1 contract. Invalid, unknown, and newer versions are rejected; reverse migration is not supported.
 
@@ -373,7 +384,7 @@ Rules Studio immediately replaces imported older JSON in its editor model with t
 
 ## Runtime settings
 
-Defaults are suitable for most dedicated servers:
+The curated default configuration is suitable for most dedicated servers:
 
 ```json
   "settings": {
@@ -396,7 +407,15 @@ Defaults are suitable for most dedicated servers:
 - `mountGraceSeconds`: delay between the action-denied tip and forced dismount where ground riding or flying is denied, 0-120 seconds.
 - `debugLogging`: verbose area-rule and unresolved-combat diagnostics. Ordinary
   warning logs report the first unresolved event and aggregate repeats every
-  60 seconds; debug logging records every unresolved event with route evidence.
+  60 seconds; debug logging records every unresolved event with route evidence
+  in the local Debug-level file without bypassing server-console rate limits.
+  Combat route evidence includes raw attacker, damage-causer, and network-owner
+  object names plus the target identity and map-object attribution signals.
+
+Except for required `playerSweepSeconds`, omitting these fields uses the neutral
+fallback (`false` or zero where zero is valid). If `hotReload` is `true`,
+`hotReloadSeconds` is required. The values above remain explicit in the shipped
+default file and are not hidden DLL defaults.
 
 ## Editing workflow
 

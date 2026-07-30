@@ -1,6 +1,6 @@
 {
   "$schema": "./PalLaw.schema.json",
-  "version": 4,
+  "version": 5,
   "regionalCombat": {
     "enabled": true
   },
@@ -154,21 +154,11 @@
         "fastTravelDeparture": "all",
         "fastTravelArrival": "none"
       },
-      "combat": [
-        {
-          "source": "player",
-          "target": "structure",
-          "allow": false
-        },
-        {
-          "source": [
-            "partnerPal",
-            "basePal"
-          ],
-          "target": "environment",
-          "allow": false
-        }
-      ]
+      "combat": {
+        "player": { "structure": false },
+        "partnerPal": { "environment": false },
+        "basePal": { "environment": false }
+      }
     }
   ],
   "schedules": [
@@ -269,8 +259,7 @@
           "structure": true,
           "environment": true
         }
-      },
-      "messages": {}
+      }
     },
     {
       "id": "pve",
@@ -349,8 +338,7 @@
           "structure": true,
           "environment": true
         }
-      },
-      "messages": {}
+      }
     },
     {
       "id": "pvp",

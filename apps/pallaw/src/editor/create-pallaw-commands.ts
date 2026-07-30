@@ -1,7 +1,7 @@
 import type { EditorDocument } from "../document/create-editor-document";
 import type { PalLawConfig } from "../document/create-pallaw-document";
 import { clone, resolveAreaMessages, setQuickCombatOverride } from "../domain/rules";
-import type { EventMessage, Point, ScheduleValue } from "../domain/types";
+import type { EventMessage, Point, RegionValue, ScheduleValue } from "../domain/types";
 import type { AreaIntent, MessageIntent, ModeIntent } from "./intents";
 import type { EditorModel } from "./create-editor-model";
 
@@ -93,13 +93,17 @@ export function createPalLawCommands(document: EditorDocument<PalLawConfig>, mod
         else if (intent.type === "set-mode") target.mode = intent.value;
         else if (intent.type === "set-enabled" && "enabled" in target) target.enabled = intent.value;
         else if (intent.type === "set-map" && "map" in target) target.map = intent.value;
-        else if (intent.type === "set-minimum-level" && "minimumLevel" in target) target.minimumLevel = intent.value;
+        else if (intent.type === "set-minimum-level" && subject.kind === "region" && "polygon" in target) {
+          const region = target as RegionValue;
+          if (intent.value === undefined) delete region.minimumLevel;
+          else region.minimumLevel = intent.value;
+        }
         else if (intent.type === "set-polygon" && "polygon" in target) target.polygon = intent.value.map(([x, y]) => [Number(x), Number(y)]);
         else if (intent.type === "set-action") {
           if (intent.value === null) delete target.actions[intent.actionId];
           else target.actions[intent.actionId] = intent.value;
         } else if (intent.type === "set-combat") setQuickCombatOverride(target, intent.source, intent.target, intent.value);
-        else if (intent.type === "reset-combat") target.combat = [];
+        else if (intent.type === "reset-combat") target.combat = {};
       });
     },
     applyMode(index, intent) {
@@ -226,7 +230,7 @@ export function createPalLawCommands(document: EditorDocument<PalLawConfig>, mod
     setRegionPolygon(index, polygon) { mutate((draft) => { if (draft.regions[index]) draft.regions[index]!.polygon = polygon.map(([x, y]) => [x, y]); }); },
     addRegion(name, mapId, polygon) {
       const index = document.read().config.regions.length;
-      mutate((draft) => { draft.regions.push({ name, enabled: true, mode: draft.modes[0]!.id, schedules: [], minimumLevel: null, map: mapId, polygon: polygon.map(([x, y]) => [x, y]), actions: {}, combat: [], messages: {} }); });
+      mutate((draft) => { draft.regions.push({ name, enabled: true, mode: draft.modes[0]!.id, schedules: [], map: mapId, polygon: polygon.map(([x, y]) => [x, y]), actions: {}, combat: {}, messages: {} }); });
       model.selectRegion(index);
       return index;
     }

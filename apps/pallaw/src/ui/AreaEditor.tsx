@@ -14,7 +14,7 @@ export interface AreaEditorValue {
   readonly minimumLevel?: number | null;
   readonly polygon?: readonly (readonly [number, number])[];
   readonly actions: ActionValues;
-  readonly combat: readonly unknown[];
+  readonly combat: Readonly<Record<string, Readonly<Record<string, boolean | undefined>>>>;
   readonly messages?: Readonly<Record<string, unknown>>;
 }
 
@@ -37,7 +37,12 @@ export function AreaEditor(props: {
   const [tab, setTab] = createSignal<"general" | "rules" | "messages">("general");
   const [polygonText, setPolygonText] = createSignal(JSON.stringify(props.area.polygon ?? [], null, 2));
   const [polygonError, setPolygonError] = createSignal("");
-  const setLevel = (raw: string) => props.onChange({ type: "set-minimum-level", value: raw.trim() ? Math.max(1, Math.min(999, Math.trunc(Number(raw)))) : null });
+  const levelPolicy = () => !Object.hasOwn(props.area, "minimumLevel") ? "inherit" : props.area.minimumLevel === null ? "none" : "custom";
+  const setLevelPolicy = (policy: string) => props.onChange({
+    type: "set-minimum-level",
+    value: policy === "inherit" ? undefined : policy === "none" ? null : Math.max(1, Math.min(999, Math.trunc(Number(props.area.minimumLevel ?? props.modeMinimumLevel ?? 1))))
+  });
+  const setLevel = (raw: string) => props.onChange({ type: "set-minimum-level", value: Math.max(1, Math.min(999, Math.trunc(Number(raw || 1)))) });
   const applyPolygon = () => {
     try {
       const parsed = JSON.parse(polygonText()) as unknown;
@@ -72,7 +77,7 @@ export function AreaEditor(props: {
             <div class="region-behavior-grid">
               <div class="field region-enabled-field"><span>Availability</span><ControlRow kind="boolean" variant="standalone" label="Use this region" description="Disabled regions remain in the file." checked={props.area.enabled !== false} onChange={(value) => { props.onChange({ type: "set-enabled", value }); }} /></div>
               <label class="field region-map-field"><span>Coordinate map</span><select aria-label="Coordinate map" value={props.area.map} onChange={(event) => { props.onChange({ type: "set-map", value: event.currentTarget.value }); }}><For each={props.maps}>{(map) => <option value={map.id}>{map.label}</option>}</For></select><small>Coordinates are interpreted against this map.</small></label>
-              <label class="field region-level-field"><span>Minimum player level</span><input aria-label="Minimum player level" type="number" min="1" max="999" step="1" value={props.area.minimumLevel ?? ""} placeholder={props.modeMinimumLevel == null ? "Mode: no requirement" : `Mode: level ${props.modeMinimumLevel}`} onChange={(event) => { setLevel(event.currentTarget.value); }} /><small>Leave blank to use the mode setting.</small></label>
+              <label class="field region-level-field"><span>Minimum player level</span><select aria-label="Minimum level policy" value={levelPolicy()} onChange={(event) => { setLevelPolicy(event.currentTarget.value); }}><option value="inherit">Use mode setting</option><option value="none">No requirement</option><option value="custom">Custom level</option></select><Show when={levelPolicy() === "custom"}><input aria-label="Minimum player level" type="number" min="1" max="999" step="1" value={props.area.minimumLevel ?? 1} onChange={(event) => { setLevel(event.currentTarget.value); }} /></Show><small>{levelPolicy() === "inherit" ? (props.modeMinimumLevel == null ? "Mode has no requirement." : `Mode requires level ${props.modeMinimumLevel}.`) : levelPolicy() === "none" ? "This Region clears the mode requirement." : "This Region replaces the mode requirement."}</small></label>
             </div>
           </section>
           <section class="region-form-section region-polygon-section">
@@ -88,7 +93,7 @@ export function AreaEditor(props: {
       <div class="rules-stack">
         <Show when={props.regionalCombatEnabled === false}><p class="help combat-inactive">Combat rules are saved but currently inactive. Level and world-action rules remain enabled.</p></Show>
         <div class="section-card rules-actions"><div class="section-card-header"><div><h3>Player actions</h3><p>Control building, dismantling, mounts, and other regional actions.</p></div></div><div class="section-card-body"><ActionsEditor actions={props.area.actions} effective={props.effectiveActions} isMode={false} onChange={(actionId, value) => { props.onChange({ type: "set-action", actionId, value }); }} /></div></div>
-        <div class="section-card combat-matrix-card"><div class="section-card-header"><div><h3>Combat matrix</h3><p>Choose Default, Allow, or Deny for every combat relationship.</p></div><button type="button" class="button small ghost" disabled={props.area.combat.length === 0} onClick={() => { props.onChange({ type: "reset-combat" }); }}>Reset overrides</button></div><div class="section-card-body"><CombatMatrix matrix={props.effectiveCombat} isMode={false} modeName={props.modeName} overrideFor={props.overrideFor} onChange={(source, target, value) => { props.onChange({ type: "set-combat", source, target, value }); }} /></div></div>
+        <div class="section-card combat-matrix-card"><div class="section-card-header"><div><h3>Combat matrix</h3><p>Choose Default, Allow, or Deny for every combat relationship.</p></div><button type="button" class="button small ghost" disabled={Object.keys(props.area.combat).length === 0} onClick={() => { props.onChange({ type: "reset-combat" }); }}>Reset overrides</button></div><div class="section-card-body"><CombatMatrix matrix={props.effectiveCombat} isMode={false} modeName={props.modeName} overrideFor={props.overrideFor} onChange={(source, target, value) => { props.onChange({ type: "set-combat", source, target, value }); }} /></div></div>
       </div>
     </Show>
     <Show when={tab() === "messages"}><MessageInspector messages={props.messages} resolved={props.resolvedMessages} areaName={props.area.name} modeName={props.modeName} overrides={props.area.messages} onChange={(intent) => { props.onChange({ type: "message", intent }); }} /></Show>

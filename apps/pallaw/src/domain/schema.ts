@@ -37,22 +37,16 @@ export type ActivityAlertChannel =
 export type ModeId = string;
 export type Color = string;
 export type ModeActions = Actions;
-export type SourceSelection = SourceActor | [SourceActor, ...SourceActor[]];
 export type SourceActor = "player" | "partnerPal" | "basePal" | "baseStructure" | "wildPal" | "npc";
-export type TargetSelection = Actor | [Actor, ...Actor[]];
 export type Actor =
   "player" | "partnerPal" | "basePal" | "baseStructure" | "wildPal" | "npc" | "structure" | "environment";
-/**
- * @maxItems 128
- */
-export type CombatOverrides = CombatEntry[];
 export type Point = [number, number];
 
-export interface PalLawConfigurationVersion4 {
+export interface PalLawConfigurationVersion5 {
   $schema?: string;
-  version: 4;
+  version: 5;
   regionalCombat?: RegionalCombat;
-  settings?: Settings;
+  settings: Settings;
   messages?: GlobalMessages;
   /**
    * Ordered recurring schedules. When active mode windows overlap in one Area, the later schedule wins.
@@ -66,6 +60,7 @@ export interface PalLawConfigurationVersion4 {
    */
   modes: [ModeDefinition, ...ModeDefinition[]];
   wilderness: Wilderness;
+  stageAreas: Wilderness;
   /**
    * @maxItems 1024
    */
@@ -79,7 +74,7 @@ export interface Settings {
   hotReloadSeconds?: number;
   worldRules?: boolean;
   adminBypass?: boolean;
-  playerSweepSeconds?: number;
+  playerSweepSeconds: number;
   mountGraceSeconds?: number;
   debugLogging?: boolean;
 }
@@ -111,8 +106,8 @@ export interface ScheduleAnnouncement {
   serverNotice?: ScheduleOutput;
 }
 export interface ScheduleOutput {
-  enabled: boolean;
-  text: string;
+  enabled?: boolean;
+  text?: string;
 }
 export interface ActionNames {
   build?: DisplayName;
@@ -133,7 +128,7 @@ export interface ModeDefinition {
   id: ModeId;
   name: DisplayName;
   color: Color;
-  minimumLevel: number | null;
+  minimumLevel?: number | null;
   actions: ModeActions;
   combat: ModeCombat;
   messages?: MessageOverrides;
@@ -180,19 +175,31 @@ export interface Wilderness {
   combat?: CombatOverrides;
   messages?: MessageOverrides;
 }
-export interface CombatEntry {
-  source: SourceSelection;
-  target: TargetSelection;
-  allow: boolean;
-  bidirectional?: boolean;
+export interface CombatOverrides {
+  player?: SparseTargetRow;
+  partnerPal?: SparseTargetRow;
+  basePal?: SparseTargetRow;
+  baseStructure?: SparseTargetRow;
+  wildPal?: SparseTargetRow;
+  npc?: SparseTargetRow;
+}
+export interface SparseTargetRow {
+  player?: boolean;
+  partnerPal?: boolean;
+  basePal?: boolean;
+  baseStructure?: boolean;
+  wildPal?: boolean;
+  npc?: boolean;
+  structure?: boolean;
+  environment?: boolean;
 }
 export interface Region {
   name: DisplayName;
   enabled?: boolean;
   mode: ModeId;
   schedules?: string[];
-  minimumLevel?: number;
-  map?: string;
+  minimumLevel?: number | null;
+  map: string;
   /**
    * @minItems 3
    * @maxItems 1024

@@ -1,23 +1,28 @@
 {
-  "$schema": "../../site/pallaw/PalLaw.schema.json",
-  "version": 4,
+  "$schema": "./PalLaw.schema.json",
+  "version": 5,
   "regionalCombat": {
     "enabled": true
   },
   "settings": {
+    "playerSweepSeconds": 0.25,
     "hotReload": true,
     "hotReloadSeconds": 1,
     "worldRules": true,
     "adminBypass": true,
-    "playerSweepSeconds": 0.25,
-    "mountGraceSeconds": 15,
-    "debugLogging": false
+    "mountGraceSeconds": 15
   },
   "messages": {
     "enabled": true,
     "actionNames": {
       "build": "Xây dựng",
+      "dismantle": "Dismantling",
+      "ride": "Non-flying riding",
       "fly": "Bay",
+      "editSign": "Sign editing",
+      "editLock": "Lock editing",
+      "decay": "Building decay",
+      "fastTravelDeparture": "Fast Travel Departure",
       "fastTravelArrival": "Điểm đến dịch chuyển"
     },
     "regionChanged": {
@@ -27,6 +32,11 @@
         "text": "Entered {region}."
       },
       "alerts": {
+        "brief": {
+          "enabled": false,
+          "text": "{region}",
+          "tone": "normal"
+        },
         "activity": {
           "enabled": true,
           "text": "{region}"
@@ -45,6 +55,10 @@
           "enabled": true,
           "text": "{action} is not allowed here.",
           "tone": "negative"
+        },
+        "activity": {
+          "enabled": false,
+          "text": "{action} is not allowed here."
         }
       }
     },
@@ -60,106 +74,23 @@
           "enabled": true,
           "text": "Level {minimumLevel} required - {region}",
           "tone": "negative"
+        },
+        "activity": {
+          "enabled": false,
+          "text": "Level {minimumLevel} required - {region}"
         }
       }
     }
   },
-  "wilderness": {
-    "name": "Wilderness",
-    "mode": "pve",
-    "schedules": ["weekend-pvp"]
-  },
-  "stageAreas": {
-    "name": "Stage Areas",
-    "mode": "pve",
-    "schedules": []
-  },
-  "regions": [
-    {
-      "name": "PvP Island",
-      "enabled": true,
-      "mode": "pvp",
-      "minimumLevel": 20,
-      "map": "world",
-      "polygon": [
-        [
-          -240000,
-          90000
-        ],
-        [
-          -210000,
-          125000
-        ],
-        [
-          -160000,
-          100000
-        ],
-        [
-          -180000,
-          55000
-        ]
-      ],
-      "messages": {
-        "regionChanged": {
-          "enabled": true,
-          "cooldownSeconds": 0,
-          "chat": {
-            "enabled": true,
-            "text": "Entered {region}. Player combat is enabled here."
-          },
-          "alerts": {
-            "brief": {
-              "enabled": true,
-              "text": "PvP enabled - {region}.",
-              "tone": "negative"
-            },
-            "activity": {
-              "enabled": true,
-              "text": "{region}"
-            }
-          }
-        }
-      }
-    },
-    {
-      "name": "Market Sanctuary",
-      "enabled": true,
-      "mode": "safe",
-      "map": "world",
-      "polygon": [
-        [
-          -70000,
-          -20000
-        ],
-        [
-          -35000,
-          -20000
-        ],
-        [
-          -35000,
-          15000
-        ],
-        [
-          -70000,
-          15000
-        ]
-      ],
-      "actions": {
-        "build": false,
-        "dismantle": false,
-        "editSign": false,
-        "editLock": false,
-        "fastTravelDeparture": "all",
-        "fastTravelArrival": "none"
-      }
-    }
-  ],
   "schedules": [
     {
       "id": "weekend-pvp",
       "name": "Weekend PvP",
       "enabled": true,
-      "days": ["sat", "sun"],
+      "days": [
+        "sat",
+        "sun"
+      ],
       "startTime": "18:00",
       "endTime": "22:00",
       "mode": "pvp",
@@ -168,8 +99,14 @@
           "enabled": true,
           "relativeTo": "start",
           "minutesBefore": 15,
-          "globalChat": { "enabled": true, "text": "{schedule} starts in {minutes} minutes." },
-          "serverNotice": { "enabled": true, "text": "{schedule} starts soon" }
+          "globalChat": {
+            "enabled": true,
+            "text": "{schedule} starts in {minutes} minutes."
+          },
+          "serverNotice": {
+            "enabled": true,
+            "text": "{schedule} starts soon"
+          }
         }
       ]
     },
@@ -177,15 +114,25 @@
       "id": "daily-restart-reminder",
       "name": "Daily restart reminder",
       "enabled": true,
-      "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+      "days": [
+        "mon",
+        "tue",
+        "wed",
+        "thu",
+        "fri",
+        "sat",
+        "sun"
+      ],
       "startTime": "05:00",
       "announcements": [
         {
           "enabled": true,
           "relativeTo": "start",
           "minutesBefore": 5,
-          "globalChat": { "enabled": true, "text": "Server restart in {minutes} minutes." },
-          "serverNotice": { "enabled": false, "text": "" }
+          "globalChat": {
+            "enabled": true,
+            "text": "Server restart in {minutes} minutes."
+          }
         }
       ]
     }
@@ -195,7 +142,6 @@
       "id": "safe",
       "name": "An toàn",
       "color": "#22C55E",
-      "minimumLevel": null,
       "actions": {
         "build": true,
         "dismantle": true,
@@ -268,14 +214,12 @@
           "structure": true,
           "environment": true
         }
-      },
-      "messages": {}
+      }
     },
     {
       "id": "pve",
       "name": "PvE",
       "color": "#38BDF8",
-      "minimumLevel": null,
       "actions": {
         "build": true,
         "dismantle": true,
@@ -348,14 +292,12 @@
           "structure": true,
           "environment": true
         }
-      },
-      "messages": {}
+      }
     },
     {
       "id": "pvp",
       "name": "Đối kháng",
       "color": "#F43F5E",
-      "minimumLevel": null,
       "actions": {
         "build": true,
         "dismantle": true,
@@ -450,6 +392,97 @@
           }
         }
       }
+    }
+  ],
+  "wilderness": {
+    "name": "Wilderness",
+    "mode": "pve",
+    "schedules": [
+      "weekend-pvp"
+    ]
+  },
+  "stageAreas": {
+    "name": "Stage Areas",
+    "mode": "pve"
+  },
+  "regions": [
+    {
+      "name": "PvP Island",
+      "mode": "pvp",
+      "messages": {
+        "regionChanged": {
+          "enabled": true,
+          "cooldownSeconds": 0,
+          "chat": {
+            "enabled": true,
+            "text": "Entered {region}. Player combat is enabled here."
+          },
+          "alerts": {
+            "brief": {
+              "enabled": true,
+              "text": "PvP enabled - {region}.",
+              "tone": "negative"
+            },
+            "activity": {
+              "enabled": true,
+              "text": "{region}"
+            }
+          }
+        }
+      },
+      "enabled": true,
+      "minimumLevel": 20,
+      "map": "world",
+      "polygon": [
+        [
+          -240000,
+          90000
+        ],
+        [
+          -210000,
+          125000
+        ],
+        [
+          -160000,
+          100000
+        ],
+        [
+          -180000,
+          55000
+        ]
+      ]
+    },
+    {
+      "name": "Market Sanctuary",
+      "mode": "safe",
+      "actions": {
+        "build": false,
+        "dismantle": false,
+        "editSign": false,
+        "editLock": false,
+        "fastTravelDeparture": "all",
+        "fastTravelArrival": "none"
+      },
+      "enabled": true,
+      "map": "world",
+      "polygon": [
+        [
+          -70000,
+          -20000
+        ],
+        [
+          -35000,
+          -20000
+        ],
+        [
+          -35000,
+          15000
+        ],
+        [
+          -70000,
+          15000
+        ]
+      ]
     }
   ]
 }

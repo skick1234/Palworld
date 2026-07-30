@@ -17,7 +17,7 @@ export type AreaIntent =
   | { readonly type: "set-mode"; readonly value: string }
   | { readonly type: "set-enabled"; readonly value: boolean }
   | { readonly type: "set-map"; readonly value: string }
-  | { readonly type: "set-minimum-level"; readonly value: number | null }
+  | { readonly type: "set-minimum-level"; readonly value: number | null | undefined }
   | { readonly type: "set-polygon"; readonly value: readonly (readonly [number, number])[] }
   | { readonly type: "fit-region" }
   | { readonly type: "set-action"; readonly actionId: string; readonly value: ActionIntentValue | null }

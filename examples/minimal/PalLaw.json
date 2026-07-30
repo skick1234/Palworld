@@ -1,28 +1,161 @@
 {
-  "$schema": "../../site/pallaw/PalLaw.schema.json",
-  "version": 4,
-  "regionalCombat": {
-    "enabled": false
-  },
+  "$schema": "./PalLaw.schema.json",
+  "version": 5,
   "settings": {
+    "playerSweepSeconds": 0.25,
+    "hotReload": true,
+    "hotReloadSeconds": 1,
     "worldRules": true,
-    "debugLogging": false
+    "adminBypass": true,
+    "mountGraceSeconds": 15
   },
-  "schedules": [],
+  "messages": {
+    "enabled": true,
+    "actionNames": {
+      "build": "Building",
+      "dismantle": "Dismantling",
+      "ride": "Non-flying riding",
+      "fly": "Flying mount use",
+      "editSign": "Sign editing",
+      "editLock": "Lock editing",
+      "decay": "Building decay",
+      "fastTravelDeparture": "Fast Travel Departure",
+      "fastTravelArrival": "Fast Travel Arrival"
+    },
+    "regionChanged": {
+      "enabled": true,
+      "chat": {
+        "enabled": false,
+        "text": "Entered {region}."
+      },
+      "alerts": {
+        "brief": {
+          "enabled": false,
+          "text": "{region}",
+          "tone": "normal"
+        },
+        "activity": {
+          "enabled": true,
+          "text": "{region}"
+        }
+      }
+    },
+    "actionDenied": {
+      "enabled": true,
+      "cooldownSeconds": 2,
+      "chat": {
+        "enabled": false,
+        "text": "{action} is not allowed in {region}."
+      },
+      "alerts": {
+        "brief": {
+          "enabled": true,
+          "text": "{action} is not allowed here.",
+          "tone": "negative"
+        },
+        "activity": {
+          "enabled": false,
+          "text": "{action} is not allowed here."
+        }
+      }
+    },
+    "levelDenied": {
+      "enabled": true,
+      "cooldownSeconds": 3,
+      "chat": {
+        "enabled": false,
+        "text": "Level {minimumLevel} is required to enter {region}."
+      },
+      "alerts": {
+        "brief": {
+          "enabled": true,
+          "text": "Level {minimumLevel} required - {region}",
+          "tone": "negative"
+        },
+        "activity": {
+          "enabled": false,
+          "text": "Level {minimumLevel} required - {region}"
+        }
+      }
+    }
+  },
   "modes": [
     {
       "id": "pve",
       "name": "PvE",
       "color": "#38BDF8",
-      "minimumLevel": null,
-      "actions": { "build": true, "dismantle": true, "ride": true, "fly": true, "editSign": true, "editLock": true, "decay": true, "fastTravelDeparture": "all", "fastTravelArrival": "all" },
+      "actions": {
+        "build": true,
+        "dismantle": true,
+        "ride": true,
+        "fly": true,
+        "editSign": true,
+        "editLock": true,
+        "decay": true,
+        "fastTravelDeparture": "all",
+        "fastTravelArrival": "all"
+      },
       "combat": {
-        "player": { "player": false, "partnerPal": false, "basePal": false, "baseStructure": false, "wildPal": true, "npc": true, "structure": true, "environment": true },
-        "partnerPal": { "player": false, "partnerPal": false, "basePal": false, "baseStructure": false, "wildPal": true, "npc": true, "structure": true, "environment": true },
-        "basePal": { "player": false, "partnerPal": false, "basePal": false, "baseStructure": false, "wildPal": true, "npc": true, "structure": true, "environment": true },
-        "baseStructure": { "player": false, "partnerPal": false, "basePal": false, "baseStructure": false, "wildPal": true, "npc": true, "structure": true, "environment": true },
-        "wildPal": { "player": true, "partnerPal": true, "basePal": true, "baseStructure": true, "wildPal": true, "npc": true, "structure": true, "environment": true },
-        "npc": { "player": true, "partnerPal": true, "basePal": true, "baseStructure": true, "wildPal": true, "npc": true, "structure": true, "environment": true }
+        "player": {
+          "player": false,
+          "partnerPal": false,
+          "basePal": false,
+          "baseStructure": false,
+          "wildPal": true,
+          "npc": true,
+          "structure": true,
+          "environment": true
+        },
+        "partnerPal": {
+          "player": false,
+          "partnerPal": false,
+          "basePal": false,
+          "baseStructure": false,
+          "wildPal": true,
+          "npc": true,
+          "structure": true,
+          "environment": true
+        },
+        "basePal": {
+          "player": false,
+          "partnerPal": false,
+          "basePal": false,
+          "baseStructure": false,
+          "wildPal": true,
+          "npc": true,
+          "structure": true,
+          "environment": true
+        },
+        "baseStructure": {
+          "player": false,
+          "partnerPal": false,
+          "basePal": false,
+          "baseStructure": false,
+          "wildPal": true,
+          "npc": true,
+          "structure": true,
+          "environment": true
+        },
+        "wildPal": {
+          "player": true,
+          "partnerPal": true,
+          "basePal": true,
+          "baseStructure": true,
+          "wildPal": true,
+          "npc": true,
+          "structure": true,
+          "environment": true
+        },
+        "npc": {
+          "player": true,
+          "partnerPal": true,
+          "basePal": true,
+          "baseStructure": true,
+          "wildPal": true,
+          "npc": true,
+          "structure": true,
+          "environment": true
+        }
       }
     }
   ],
@@ -38,12 +171,26 @@
     {
       "name": "Level 70 Zone",
       "mode": "pve",
+      "enabled": true,
       "minimumLevel": 70,
+      "map": "world",
       "polygon": [
-        [-240000, 90000],
-        [-210000, 125000],
-        [-160000, 100000],
-        [-180000, 55000]
+        [
+          -240000,
+          90000
+        ],
+        [
+          -210000,
+          125000
+        ],
+        [
+          -160000,
+          100000
+        ],
+        [
+          -180000,
+          55000
+        ]
       ]
     }
   ]

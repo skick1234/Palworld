@@ -1,4 +1,4 @@
-export const CONFIG_VERSION = 4;
+export const CONFIG_VERSION = 5;
 export const CONFIG_FILE_NAME = "PalLaw.json";
 export const SCHEMA_FILE_NAME = "PalLaw.schema.json";
 
@@ -215,6 +215,18 @@ export const DEFAULT_REGIONAL_COMBAT = Object.freeze({
   enabled: true
 });
 
+export const NEUTRAL_SETTINGS = Object.freeze({
+  hotReload: false,
+  hotReloadSeconds: 0,
+  worldRules: false,
+  adminBypass: false,
+  playerSweepSeconds: 0,
+  mountGraceSeconds: 0,
+  debugLogging: false
+});
+
+export const NEUTRAL_REGIONAL_COMBAT = Object.freeze({ enabled: false });
+
 function defaultAlerts(text: string, enabledPresentation: string, briefTone = "normal") {
   return Object.fromEntries(ALERT_PRESENTATIONS.map(({ id }) => [
     id,
@@ -249,6 +261,26 @@ export const DEFAULT_MESSAGES: Readonly<GlobalMessages> = Object.freeze({
   }
 });
 
+function neutralMessage(): EventMessage {
+  return {
+    enabled: false,
+    cooldownSeconds: 0,
+    chat: { enabled: false, text: "" },
+    alerts: {
+      brief: { enabled: false, text: "" },
+      activity: { enabled: false, text: "" }
+    }
+  };
+}
+
+export const NEUTRAL_MESSAGES: Readonly<GlobalMessages> = Object.freeze({
+  enabled: false,
+  actionNames: Object.fromEntries(Object.keys(DEFAULT_ACTION_NAMES).map((key) => [key, ""])),
+  regionChanged: neutralMessage(),
+  actionDenied: neutralMessage(),
+  levelDenied: neutralMessage()
+});
+
 const ACTOR_IDS = new Set(ACTORS.map((entry) => entry.id));
 const SOURCE_ACTOR_IDS = new Set(ACTORS.filter((entry) => !entry.targetOnly).map((entry) => entry.id));
 const ACTION_IDS = new Set(ACTIONS.map((entry) => entry.id));
@@ -260,9 +292,21 @@ const SCHEDULE_PLACEHOLDERS = new Set(["schedule", "startTime", "endTime", "minu
 const EPSILON = 1e-6;
 
 export function clone<T>(value: T): T {
-  return typeof structuredClone === "function"
+  const result = typeof structuredClone === "function"
     ? structuredClone(value)
     : JSON.parse(JSON.stringify(value));
+  return isHydratedConfig(value) && isPlainObject(result)
+    ? markHydrated(result as unknown as PalLawConfigValue) as unknown as T
+    : result;
+}
+
+function markHydrated<T extends PalLawConfigValue>(config: T): T {
+  Object.defineProperty(config, "__pallawHydrated", { value: true, enumerable: false });
+  return config;
+}
+
+function isHydratedConfig(value: unknown): value is PalLawConfigValue {
+  return isPlainObject(value) && value.__pallawHydrated === true;
 }
 
 export function modeDefinition(mode: string | undefined, configOrModes?: PalLawConfigValue | readonly ModeDescriptor[]): ModeDescriptor {
@@ -285,7 +329,7 @@ function createStarterMode({ id, name, color }: ModeDescriptor): ModeValue {
 }
 
 export function createDefaultConfig(): PalLawConfigValue {
-  return {
+  return markHydrated({
     $schema: `./${SCHEMA_FILE_NAME}`,
     version: CONFIG_VERSION,
     regionalCombat: clone(DEFAULT_REGIONAL_COMBAT),
@@ -298,7 +342,7 @@ export function createDefaultConfig(): PalLawConfigValue {
       mode: "pve",
       schedules: [],
       actions: {},
-      combat: [],
+      combat: {},
       messages: {}
     },
     stageAreas: {
@@ -306,11 +350,11 @@ export function createDefaultConfig(): PalLawConfigValue {
       mode: "pve",
       schedules: [],
       actions: {},
-      combat: [],
+      combat: {},
       messages: {}
     },
     regions: []
-  };
+  });
 }
 
 function finite(value: unknown, fallback: number): number {
@@ -389,14 +433,14 @@ export function enabledMessageOutputCount(message: EventMessage | null | undefin
   );
 }
 
-export function normalizeMessages(value: unknown, base: Readonly<GlobalMessages> = DEFAULT_MESSAGES, includeGlobalControls = true): GlobalMessages {
+export function normalizeMessages(value: unknown, base: Readonly<GlobalMessages> = NEUTRAL_MESSAGES, includeGlobalControls = true): GlobalMessages {
   const result = clone(base) as GlobalMessages;
   if (!isPlainObject(value)) {
     return result;
   }
   if (includeGlobalControls) {
     result.enabled = boolean(value.enabled, result.enabled);
-    result.actionNames = normalizeDisplayNames(value.actionNames, DEFAULT_ACTION_NAMES);
+    result.actionNames = normalizeDisplayNames(value.actionNames, result.actionNames);
   }
   for (const event of MESSAGE_EVENTS) {
     if (Object.hasOwn(value, event.id)) {
@@ -432,23 +476,14 @@ function normalizeActions(value: unknown): Record<string, ActionValue | undefine
   return result;
 }
 
-function normalizeSelection(value: unknown): string[] {
-  const entries = Array.isArray(value) ? value : [value];
-  return [...new Set(entries.filter((entry) => typeof entry === "string"))];
-}
-
 function normalizeCombat(value: unknown): AreaValue["combat"] {
-  if (!Array.isArray(value)) return [];
-  return value.map((entry) => {
-    const source = isPlainObject(entry) ? entry : {};
-    const result: AreaValue["combat"][number] = {
-      source: normalizeSelection(source.source),
-      target: normalizeSelection(source.target),
-      bidirectional: boolean(source.bidirectional, false)
-    };
-    if (typeof source.allow === "boolean") result.allow = source.allow;
-    return result;
-  });
+  if (!isPlainObject(value)) return {};
+  return Object.fromEntries(Object.entries(value).flatMap(([source, row]) => {
+    if (!SOURCE_ACTOR_IDS.has(source) || !isPlainObject(row)) return [];
+    const targets = Object.fromEntries(Object.entries(row)
+      .filter(([target, allowed]) => ACTOR_IDS.has(target) && typeof allowed === "boolean")) as Record<string, boolean | undefined>;
+    return Object.keys(targets).length ? [[source, targets]] : [];
+  })) as AreaValue["combat"];
 }
 
 function normalizeArea(value: unknown, fallbackName = "Region"): AreaValue {
@@ -474,7 +509,7 @@ function normalizeScheduleOutput(value: unknown): ScheduleOutput {
 function normalizeScheduleAnnouncement(value: unknown): ScheduleAnnouncementValue {
   const source = isPlainObject(value) ? value : {};
   return {
-    enabled: boolean(source.enabled, true),
+    enabled: boolean(source.enabled, false),
     relativeTo: source.relativeTo === "end" ? "end" : "start",
     minutesBefore: Number.isInteger(Number(source.minutesBefore)) ? Number(source.minutesBefore) : 0,
     globalChat: normalizeScheduleOutput(source.globalChat),
@@ -487,7 +522,7 @@ function normalizeSchedule(value: unknown, index: number): ScheduleValue {
   return {
     id: text(source.id),
     name: text(source.name, `Schedule ${index + 1}`),
-    enabled: boolean(source.enabled, true),
+    enabled: boolean(source.enabled, false),
     days: Array.isArray(source.days) ? source.days.filter((entry): entry is string => typeof entry === "string") : [],
     startTime: text(source.startTime, "00:00"),
     endTime: typeof source.endTime === "string" ? source.endTime : null,
@@ -507,11 +542,13 @@ function normalizeRegion(value: unknown, index: number): RegionValue {
   const area = normalizeArea(source, `Region ${index + 1}`);
   return {
     ...area,
-    enabled: boolean(source.enabled, true),
-    minimumLevel: source.minimumLevel !== null && source.minimumLevel !== undefined && source.minimumLevel !== "" && Number.isInteger(Number(source.minimumLevel))
-      ? Number(source.minimumLevel)
-      : null,
-    map: text(source.map, "world"),
+    enabled: boolean(source.enabled, false),
+    ...(Object.hasOwn(source, "minimumLevel") ? {
+      minimumLevel: source.minimumLevel === null
+        ? null
+        : Number.isInteger(Number(source.minimumLevel)) ? Number(source.minimumLevel) : undefined
+    } : {}),
+    map: text(source.map),
     polygon: normalizePolygon(source.polygon)
   };
 }
@@ -521,8 +558,8 @@ function normalizeDenseActions(value: unknown): Record<string, ActionValue | und
   return Object.fromEntries(ACTIONS.map((action) => [
     action.id,
     action.fastTravelPolicy
-      ? (() => { const candidate = source[action.id]; return isFastTravelPolicy(action.id, candidate) ? candidate : "all"; })()
-      : boolean(source[action.id], true)
+      ? (() => { const candidate = source[action.id]; return isFastTravelPolicy(action.id, candidate) ? candidate : "none"; })()
+      : boolean(source[action.id], false)
   ])) as Record<string, ActionValue | undefined>;
 }
 
@@ -560,28 +597,32 @@ function normalizePolygon(value: unknown): Point[] {
 
 export function hydrateConfig(value: unknown): PalLawConfigValue {
   const source = isPlainObject(value) ? value : {};
-  const config = createDefaultConfig();
-  config.$schema = text(source.$schema, config.$schema);
-  config.version = Number(source.version ?? CONFIG_VERSION);
+  const config = {
+    $schema: text(source.$schema, `./${SCHEMA_FILE_NAME}`),
+    version: Number(source.version ?? CONFIG_VERSION),
+    regionalCombat: clone(NEUTRAL_REGIONAL_COMBAT),
+    settings: clone(NEUTRAL_SETTINGS),
+    messages: clone(NEUTRAL_MESSAGES),
+    schedules: [] as ScheduleValue[],
+    modes: [] as ModeValue[],
+    wilderness: normalizeArea(source.wilderness, "Wilderness"),
+    stageAreas: normalizeArea(source.stageAreas, "Stage Areas"),
+    regions: [] as RegionValue[]
+  } as PalLawConfigValue;
   const regionalCombat = isPlainObject(source.regionalCombat) ? source.regionalCombat : {};
   config.regionalCombat = {
-    enabled: boolean(
-      regionalCombat.enabled,
-      DEFAULT_REGIONAL_COMBAT.enabled
-    )
+    enabled: boolean(regionalCombat.enabled, false)
   };
   config.settings = { ...config.settings, ...(isPlainObject(source.settings) ? source.settings : {}) } as RuntimeSettingsValue;
-  for (const key of Object.keys(DEFAULT_SETTINGS) as Array<keyof RuntimeSettingsValue>) {
-    const fallback = DEFAULT_SETTINGS[key];
+  for (const key of Object.keys(NEUTRAL_SETTINGS) as Array<keyof RuntimeSettingsValue>) {
+    const fallback = NEUTRAL_SETTINGS[key];
     (config.settings as unknown as Record<string, boolean | number>)[key] = typeof fallback === "boolean"
       ? boolean(config.settings[key], fallback)
       : finite(config.settings[key], fallback);
   }
-  config.messages = normalizeMessages(source.messages, DEFAULT_MESSAGES, true);
+  config.messages = normalizeMessages(source.messages, NEUTRAL_MESSAGES, true);
   config.schedules = Array.isArray(source.schedules) ? source.schedules.map(normalizeSchedule) : [];
   config.modes = Array.isArray(source.modes) ? source.modes.map(normalizeMode) : [];
-  config.wilderness = normalizeArea(source.wilderness, "Wilderness");
-  config.stageAreas = normalizeArea(source.stageAreas, "Stage Areas");
   config.regions = Array.isArray(source.regions)
     ? source.regions.map(normalizeRegion)
     : [];
@@ -593,7 +634,7 @@ export function hydrateConfig(value: unknown): PalLawConfigValue {
   attachMode(config.wilderness);
   attachMode(config.stageAreas);
   config.regions.forEach(attachMode);
-  return config;
+  return markHydrated(config);
 }
 
 export function modeActions(): Record<string, ActionValue | undefined> {
@@ -607,7 +648,9 @@ export function effectiveActions(area: AreaValue): Record<string, ActionValue | 
 }
 
 export function effectiveMinimumLevel(area: Pick<AreaValue, "mode"> & Partial<Pick<RegionValue, "minimumLevel">> & Partial<Pick<AreaValue, "_modeDefinition">>, config: PalLawConfigValue): number | null {
-  return area?.minimumLevel ?? area?._modeDefinition?.minimumLevel ?? modeDefinition(area?.mode, config)?.minimumLevel ?? null;
+  return Object.hasOwn(area, "minimumLevel")
+    ? area.minimumLevel ?? null
+    : area?._modeDefinition?.minimumLevel ?? modeDefinition(area?.mode, config)?.minimumLevel ?? null;
 }
 
 export function modeCombat(mode: string): CombatMatrix {
@@ -646,21 +689,12 @@ function resolveCombat(area: AreaValue): { preset: CombatMatrix; matrix: CombatM
       Object.fromEntries(Object.keys(targets).map((target) => [target, false]))
     ])
   ) as CombatMatrix;
-  for (const entry of area?.combat || []) {
-    const sources = normalizeSelection(entry.source);
-    const targets = normalizeSelection(entry.target);
-    const allowed = entry.allow === true;
-    for (const source of sources) {
-      if (!matrix[source]) continue;
-      for (const target of targets) {
-        if (!Object.hasOwn(matrix[source], target)) continue;
-        matrix[source][target] = allowed;
-        overridden[source][target] = true;
-        if (entry.bidirectional && matrix[target] && Object.hasOwn(matrix[target], source)) {
-          matrix[target][source] = allowed;
-          overridden[target][source] = true;
-        }
-      }
+  for (const [source, row] of Object.entries(area?.combat || {})) {
+    if (!matrix[source]) continue;
+    for (const [target, allowed] of Object.entries(row || {})) {
+      if (!Object.hasOwn(matrix[source], target) || typeof allowed !== "boolean") continue;
+      matrix[source][target] = allowed;
+      overridden[source][target] = true;
     }
   }
   return { preset, matrix, overridden };
@@ -694,16 +728,17 @@ export function setQuickCombatOverride(area: AreaValue, source: string, target: 
     ? resolution.preset[source][target]
     : value === "allow";
 
-  area.combat = ACTORS.filter((actor) => !actor.targetOnly).flatMap((sourceActor) =>
-    ACTORS.flatMap((targetActor) => resolution.overridden[sourceActor.id][targetActor.id]
-      ? [{
-          source: [sourceActor.id],
-          target: [targetActor.id],
-          allow: resolution.matrix[sourceActor.id][targetActor.id],
-          bidirectional: false
-        }]
-      : [])
-  );
+  const combat = clone(area.combat || {});
+  if (value === "default") {
+    if (combat[source]) {
+      delete combat[source][target];
+      if (!Object.keys(combat[source]).length) delete combat[source];
+    }
+  } else {
+    combat[source] ||= {};
+    combat[source][target] = value === "allow";
+  }
+  area.combat = combat;
 }
 
 export function deriveFeatureSummary(input: unknown) {
@@ -718,7 +753,7 @@ export function deriveFeatureSummary(input: unknown) {
       mode: definition.id,
       schedules: [],
       actions: definition.actions,
-      combat: [],
+      combat: {},
       messages: definition.messages,
       _modeDefinition: definition
     });
@@ -781,7 +816,7 @@ export function deriveFeatureSummary(input: unknown) {
 }
 
 export function resolveAreaMessages(config: PalLawConfigValue, area: Pick<AreaValue, "mode" | "messages">): GlobalMessages {
-  const global = normalizeMessages(config?.messages, DEFAULT_MESSAGES, true);
+  const global = normalizeMessages(config?.messages, NEUTRAL_MESSAGES, true);
   const withMode = normalizeMessages(modeDefinition(area?.mode, config)?.messages, global, false);
   return normalizeMessages(area?.messages, withMode, false);
 }
@@ -882,7 +917,8 @@ function validateMessage(message: EventMessage, context: string, errors: ErrorSi
   }
   for (const { id } of ALERT_PRESENTATIONS) {
     const alert = message.alerts?.[id];
-    if (id === "brief" && alert && (typeof alert.tone !== "string" || !ALERT_TONE_IDS.has(alert.tone))) {
+    if (id === "brief" && alert && (alert.enabled || alert.text || alert.tone !== undefined) &&
+        (typeof alert.tone !== "string" || !ALERT_TONE_IDS.has(alert.tone))) {
       errors.push(`${context}.alerts.brief.tone must be normal or negative.`);
     }
     if (id === "activity" && Object.hasOwn(alert || {}, "tone")) {
@@ -895,21 +931,21 @@ function validateMessage(message: EventMessage, context: string, errors: ErrorSi
 }
 
 function validateCombat(entries: unknown, context: string, errors: ErrorSink): void {
-  if (!Array.isArray(entries)) {
-    errors.push(`${context} must be an array.`);
+  if (!isPlainObject(entries)) {
+    errors.push(`${context} must be an object.`);
     return;
   }
-  entries.forEach((entry, index) => {
-    const source = isPlainObject(entry) ? entry : {};
-    const prefix = `${context}[${index}]`;
-    const sources = normalizeSelection(source.source);
-    const targets = normalizeSelection(source.target);
-    if (!sources.length || sources.some((actor) => !SOURCE_ACTOR_IDS.has(actor))) errors.push(`${prefix}.source contains an unknown source actor.`);
-    if (!targets.length || targets.some((actor) => !ACTOR_IDS.has(actor))) errors.push(`${prefix}.target contains an unknown target actor.`);
-    if (typeof source.allow !== "boolean") {
-      errors.push(`${prefix}.allow must be true or false.`);
+  for (const [source, row] of Object.entries(entries)) {
+    if (!SOURCE_ACTOR_IDS.has(source)) errors.push(`${context}.${source} is not a supported source actor.`);
+    if (!isPlainObject(row)) {
+      errors.push(`${context}.${source} must be an object.`);
+      continue;
     }
-  });
+    for (const [target, allowed] of Object.entries(row)) {
+      if (!ACTOR_IDS.has(target)) errors.push(`${context}.${source}.${target} is not a supported target actor.`);
+      if (typeof allowed !== "boolean") errors.push(`${context}.${source}.${target} must be true or false.`);
+    }
+  }
 }
 
 function boundingBox(polygon: readonly Point[]): Box {
@@ -1016,6 +1052,7 @@ function rejectUnknownKeys(value: unknown, allowed: ReadonlySet<string>, context
 function validateRawChannel(value: unknown, context: string, errors: ErrorSink, allowTone = false): void {
   if (typeof value === "boolean" || typeof value === "string") return;
   if (!rejectUnknownKeys(value, new Set(allowTone ? ["enabled", "text", "tone"] : ["enabled", "text"]), context, errors)) return;
+  if (!Object.keys(value).length) errors.push(`${context} must contain at least one override field.`);
   if (allowTone && Object.hasOwn(value, "tone") && (typeof value.tone !== "string" || !ALERT_TONE_IDS.has(value.tone))) {
     errors.push(`${context}.tone must be normal or negative.`);
   }
@@ -1023,6 +1060,7 @@ function validateRawChannel(value: unknown, context: string, errors: ErrorSink, 
 
 function validateRawAlerts(value: unknown, context: string, errors: ErrorSink): void {
   if (!rejectUnknownKeys(value, ALERT_PRESENTATION_IDS, context, errors)) return;
+  if (!Object.keys(value).length) errors.push(`${context} must contain at least one override field.`);
   for (const { id } of ALERT_PRESENTATIONS) {
     if (Object.hasOwn(value, id)) validateRawChannel(value[id], `${context}.${id}`, errors, id === "brief");
   }
@@ -1031,6 +1069,7 @@ function validateRawAlerts(value: unknown, context: string, errors: ErrorSink): 
 function validateRawMessage(value: unknown, context: string, errors: ErrorSink): void {
   if (typeof value === "boolean") return;
   if (!rejectUnknownKeys(value, new Set(["enabled", "cooldownSeconds", "chat", "alerts"]), context, errors)) return;
+  if (!Object.keys(value).length) errors.push(`${context} must contain at least one field.`);
   if (Object.hasOwn(value, "chat")) validateRawChannel(value.chat, `${context}.chat`, errors);
   if (Object.hasOwn(value, "alerts")) validateRawAlerts(value.alerts, `${context}.alerts`, errors);
 }
@@ -1042,6 +1081,7 @@ function validateRawMessages(value: unknown, context: string, global: boolean, e
     allowed.add("actionNames");
   }
   if (!rejectUnknownKeys(value, allowed, context, errors)) return;
+  if (!global && !Object.keys(value).length) errors.push(`${context} must contain at least one override field.`);
   if (global && Object.hasOwn(value, "actionNames")) {
     validateRawDisplayNames(value.actionNames, DEFAULT_ACTION_NAMES, `${context}.actionNames`, errors);
   }
@@ -1058,8 +1098,8 @@ function validateRawDisplayNames(value: unknown, defaults: Readonly<Record<strin
       continue;
     }
     const length = [...entry].length;
-    if (length < 1 || length > 96) {
-      errors.push(`${context}.${key} must contain between 1 and 96 characters.`);
+    if (length > 96) {
+      errors.push(`${context}.${key} must contain at most 96 characters.`);
     }
   }
 }
@@ -1067,6 +1107,7 @@ function validateRawDisplayNames(value: unknown, defaults: Readonly<Record<strin
 function validateRawActions(value: unknown, context: string, errors: ErrorSink): void {
   const allowed = new Set(ACTIONS.map((action) => action.id));
   if (!rejectUnknownKeys(value, allowed, context, errors)) return;
+  if (!Object.keys(value).length) errors.push(`${context} must contain at least one override field.`);
   for (const [key, entry] of Object.entries(value)) {
     if (key === "fastTravelDeparture") {
       if (!isFastTravelPolicy(key, entry)) {
@@ -1083,24 +1124,16 @@ function validateRawActions(value: unknown, context: string, errors: ErrorSink):
 }
 
 function validateRawCombat(value: unknown, context: string, errors: ErrorSink): void {
-  if (!Array.isArray(value)) {
-    errors.push(`${context} must be an array.`);
-    return;
+  if (!rejectUnknownKeys(value, SOURCE_ACTOR_IDS, context, errors)) return;
+  if (!Object.keys(value).length) errors.push(`${context} must contain at least one override cell.`);
+  for (const [source, row] of Object.entries(value)) {
+    const rowContext = `${context}.${source}`;
+    if (!rejectUnknownKeys(row, ACTOR_IDS, rowContext, errors)) continue;
+    if (!Object.keys(row).length) errors.push(`${rowContext} must contain at least one override cell.`);
+    for (const [target, allowed] of Object.entries(row)) {
+      if (typeof allowed !== "boolean") errors.push(`${rowContext}.${target} must be true or false.`);
+    }
   }
-  value.forEach((entry, index) => {
-    const prefix = `${context}[${index}]`;
-    if (!rejectUnknownKeys(entry, new Set(["source", "target", "allow", "damage", "bidirectional"]), prefix, errors)) return;
-    if (!Object.hasOwn(entry, "source")) errors.push(`${prefix}.source is required.`);
-    if (!Object.hasOwn(entry, "target")) errors.push(`${prefix}.target is required.`);
-    if (Object.hasOwn(entry, "damage")) {
-      errors.push(`${prefix}.damage is not supported in PalLaw 0.2.0; use allow=true or allow=false.`);
-    }
-    if (!Object.hasOwn(entry, "allow")) {
-      errors.push(`${prefix}.allow is required.`);
-    } else if (typeof entry.allow !== "boolean") {
-      errors.push(`${prefix}.allow must be true or false.`);
-    }
-  });
 }
 
 function validateRawArea(value: unknown, context: string, region: boolean, errors: ErrorSink): void {
@@ -1116,6 +1149,13 @@ function validateRawArea(value: unknown, context: string, region: boolean, error
   if (Object.hasOwn(value, "messages")) validateRawMessages(value.messages, `${context}.messages`, false, errors);
   if (Object.hasOwn(value, "schedules") && !Array.isArray(value.schedules)) errors.push(`${context}.schedules must be an array.`);
   if (region && !Object.hasOwn(value, "polygon")) errors.push(`${context}.polygon is required.`);
+  if (region && !Object.hasOwn(value, "map")) errors.push(`${context}.map is required.`);
+  if (region && Object.hasOwn(value, "enabled") && typeof value.enabled !== "boolean") errors.push(`${context}.enabled must be true or false.`);
+  if (region && Object.hasOwn(value, "minimumLevel") && value.minimumLevel !== null &&
+      (typeof value.minimumLevel !== "number" || !Number.isInteger(value.minimumLevel) || value.minimumLevel < 1 || value.minimumLevel > 999)) {
+    errors.push(`${context}.minimumLevel must be null or an integer between 1 and 999.`);
+  }
+  if (region && Object.hasOwn(value, "map") && (typeof value.map !== "string" || !value.map.length || value.map.length > 64)) errors.push(`${context}.map must contain between 1 and 64 characters.`);
 }
 
 function validateRawScheduleOutput(value: unknown, context: string, errors: ErrorSink): void {
@@ -1127,6 +1167,7 @@ function validateRawScheduleOutput(value: unknown, context: string, errors: Erro
 function validateRawAnnouncement(value: unknown, context: string, errors: ErrorSink): void {
   if (!rejectUnknownKeys(value, new Set(["enabled", "relativeTo", "minutesBefore", "globalChat", "serverNotice"]), context, errors)) return;
   for (const key of ["relativeTo", "minutesBefore"]) if (!Object.hasOwn(value, key)) errors.push(`${context}.${key} is required.`);
+  if (Object.hasOwn(value, "enabled") && typeof value.enabled !== "boolean") errors.push(`${context}.enabled must be true or false.`);
   if (Object.hasOwn(value, "globalChat")) validateRawScheduleOutput(value.globalChat, `${context}.globalChat`, errors);
   if (Object.hasOwn(value, "serverNotice")) validateRawScheduleOutput(value.serverNotice, `${context}.serverNotice`, errors);
 }
@@ -1135,6 +1176,7 @@ function validateRawSchedule(value: unknown, index: number, errors: ErrorSink): 
   const context = `schedules[${index}]`;
   if (!rejectUnknownKeys(value, new Set(["id", "name", "enabled", "days", "startTime", "endTime", "mode", "announcements"]), context, errors)) return;
   for (const key of ["id", "name", "days", "startTime"]) if (!Object.hasOwn(value, key)) errors.push(`${context}.${key} is required.`);
+  if (Object.hasOwn(value, "enabled") && typeof value.enabled !== "boolean") errors.push(`${context}.enabled must be true or false.`);
   if (Object.hasOwn(value, "announcements")) {
     if (!Array.isArray(value.announcements)) errors.push(`${context}.announcements must be an array.`);
     else value.announcements.forEach((announcement, announcementIndex) => validateRawAnnouncement(announcement, `${context}.announcements[${announcementIndex}]`, errors));
@@ -1144,7 +1186,7 @@ function validateRawSchedule(value: unknown, index: number, errors: ErrorSink): 
 function validateRawMode(value: unknown, index: number, errors: ErrorSink): void {
   const context = `modes[${index}]`;
   if (!rejectUnknownKeys(value, new Set(["id", "name", "color", "minimumLevel", "actions", "combat", "messages"]), context, errors)) return;
-  for (const key of ["id", "name", "color", "minimumLevel", "actions", "combat"]) {
+  for (const key of ["id", "name", "color", "actions", "combat"]) {
     if (!Object.hasOwn(value, key)) errors.push(`${context}.${key} is required.`);
   }
   if (Object.hasOwn(value, "minimumLevel") &&
@@ -1196,6 +1238,7 @@ function validateRawRegionalCombat(value: unknown, errors: ErrorSink): void {
 function validateRawConfig(input: unknown, errors: ErrorSink): void {
   if (!rejectUnknownKeys(input, new Set(["$schema", "version", "regionalCombat", "settings", "messages", "schedules", "modes", "wilderness", "stageAreas", "regions"]), "root", errors)) return;
   if (!Object.hasOwn(input, "version")) errors.push("version is required.");
+  if (!Object.hasOwn(input, "settings")) errors.push("settings is required.");
   if (!Object.hasOwn(input, "modes")) errors.push("modes is required.");
   if (!Object.hasOwn(input, "wilderness")) errors.push("wilderness is required.");
   if (!Object.hasOwn(input, "stageAreas")) errors.push("stageAreas is required.");
@@ -1204,7 +1247,22 @@ function validateRawConfig(input: unknown, errors: ErrorSink): void {
   }
   if (Object.hasOwn(input, "settings")) {
     const allowed = new Set(Object.keys(DEFAULT_SETTINGS));
-    rejectUnknownKeys(input.settings, allowed, "settings", errors);
+    if (rejectUnknownKeys(input.settings, allowed, "settings", errors)) {
+      const settings = input.settings;
+      for (const key of ["hotReload", "worldRules", "adminBypass", "debugLogging"]) {
+        if (Object.hasOwn(settings, key) && typeof settings[key] !== "boolean") errors.push(`settings.${key} must be true or false.`);
+      }
+      const validateNumber = (key: string, minimum: number, maximum: number) => {
+        if (Object.hasOwn(settings, key) && (typeof settings[key] !== "number" || !Number.isFinite(settings[key]) || settings[key] < minimum || settings[key] > maximum)) {
+          errors.push(`settings.${key} must be between ${minimum} and ${maximum}.`);
+        }
+      };
+      validateNumber("hotReloadSeconds", 0.1, 60);
+      validateNumber("playerSweepSeconds", 0.05, 10);
+      validateNumber("mountGraceSeconds", 0, 120);
+      if (!Object.hasOwn(settings, "playerSweepSeconds")) errors.push("settings.playerSweepSeconds is required.");
+      if (settings.hotReload === true && !Object.hasOwn(settings, "hotReloadSeconds")) errors.push("settings.hotReloadSeconds is required when hotReload is true.");
+    }
   }
   if (Object.hasOwn(input, "messages")) validateRawMessages(input.messages, "messages", true, errors);
   if (Object.hasOwn(input, "schedules")) {
@@ -1223,16 +1281,65 @@ function validateRawConfig(input: unknown, errors: ErrorSink): void {
   }
 }
 
+type BriefToneDefinitions = Record<string, boolean>;
+
+function resolveBriefToneDefinitions(
+  messages: unknown,
+  parent: BriefToneDefinitions,
+  context: string,
+  errors: ErrorSink
+): BriefToneDefinitions {
+  const result = { ...parent };
+  if (!isPlainObject(messages)) return result;
+  for (const event of MESSAGE_EVENTS) {
+    const rawEvent = messages[event.id];
+    if (!isPlainObject(rawEvent) || !isPlainObject(rawEvent.alerts) || !Object.hasOwn(rawEvent.alerts, "brief")) continue;
+    const brief = rawEvent.alerts.brief;
+    const toneDefined = isPlainObject(brief) && Object.hasOwn(brief, "tone") &&
+      typeof brief.tone === "string" && ALERT_TONE_IDS.has(brief.tone);
+    if (toneDefined) {
+      result[event.id] = true;
+    } else if (brief !== false && !result[event.id]) {
+      errors.push(`${context}.${event.id}.alerts.brief.tone is required because no parent layer defines it.`);
+    }
+  }
+  return result;
+}
+
+function validateBriefToneInheritance(input: unknown, errors: ErrorSink): void {
+  if (!isPlainObject(input)) return;
+  const empty = Object.fromEntries(MESSAGE_EVENTS.map(({ id }) => [id, false]));
+  const global = resolveBriefToneDefinitions(input.messages, empty, "messages", errors);
+  const modes = new Map<string, BriefToneDefinitions>();
+  if (Array.isArray(input.modes)) {
+    input.modes.forEach((mode, index) => {
+      if (!isPlainObject(mode)) return;
+      const definitions = resolveBriefToneDefinitions(mode.messages, global, `modes[${index}].messages`, errors);
+      if (typeof mode.id === "string") modes.set(mode.id, definitions);
+    });
+  }
+  const validateArea = (area: unknown, context: string) => {
+    if (!isPlainObject(area)) return;
+    const parent = typeof area.mode === "string" ? modes.get(area.mode) ?? global : global;
+    resolveBriefToneDefinitions(area.messages, parent, `${context}.messages`, errors);
+  };
+  validateArea(input.wilderness, "wilderness");
+  validateArea(input.stageAreas, "stageAreas");
+  if (Array.isArray(input.regions)) input.regions.forEach((region, index) => validateArea(region, `regions[${index}]`));
+}
+
 export function validateConfig(input: unknown) {
   const errorSink = createBoundedErrorSink();
   const errors = errorSink;
   const warnings: string[] = [];
+  const rawInput = isHydratedConfig(input) ? serializeConfig(input) : input;
   try {
-    validateRawConfigurationLimits(input);
+    validateRawConfigurationLimits(rawInput);
   } catch (error) {
     errors.push(error instanceof Error ? error.message : String(error));
   }
-  validateRawConfig(input, errors);
+  validateRawConfig(rawInput, errors);
+  validateBriefToneInheritance(rawInput, errors);
   const config = hydrateConfig(input);
   if (Number(config.version) !== CONFIG_VERSION) errors.push(`version must be ${CONFIG_VERSION}.`);
   if (config.modes.length < 1 || config.modes.length > 128) errors.push("modes must contain between 1 and 128 entries.");
@@ -1282,7 +1389,8 @@ export function validateConfig(input: unknown) {
         if (samePoint(current, next)) errors.push(`${prefix}.polygon contains adjacent duplicate points.`);
       }
     }
-    if (region.minimumLevel !== null && (!Number.isInteger(region.minimumLevel) || region.minimumLevel < 1 || region.minimumLevel > 999)) {
+    if (Object.hasOwn(region, "minimumLevel") && region.minimumLevel !== null &&
+        (!Number.isInteger(region.minimumLevel) || Number(region.minimumLevel) < 1 || Number(region.minimumLevel) > 999)) {
       errors.push(`${prefix}.minimumLevel must be an integer between 1 and 999.`);
     }
     validateCombat(region.combat, `${prefix}.combat`, errors);
@@ -1294,7 +1402,7 @@ export function validateConfig(input: unknown) {
   const stageMessages = resolveAreaMessages(config, config.stageAreas);
   for (const event of MESSAGE_EVENTS) validateMessage(messageFor(stageMessages, event.id), `stageAreas.messages.${event.id}`, errors);
 
-  const globalMessages = normalizeMessages(config.messages, DEFAULT_MESSAGES, true);
+  const globalMessages = normalizeMessages(config.messages, NEUTRAL_MESSAGES, true);
   for (const event of MESSAGE_EVENTS) validateMessage(messageFor(globalMessages, event.id), `messages.${event.id}`, errors);
   config.regions.forEach((region, index) => {
     const resolved = resolveAreaMessages(config, region);
@@ -1361,8 +1469,8 @@ function compactMessage(message: EventMessage, defaults: EventMessage): JsonReco
 function compactMessages(messages: GlobalMessages, defaults: Readonly<GlobalMessages>, includeGlobalControls: boolean): JsonRecord {
   const result: JsonRecord = {};
   if (includeGlobalControls) {
-    result.enabled = messages.enabled;
-    const actionNames = compactDisplayNames(messages.actionNames, DEFAULT_ACTION_NAMES);
+    if (messages.enabled !== defaults.enabled) result.enabled = messages.enabled;
+    const actionNames = compactDisplayNames(messages.actionNames, defaults.actionNames);
     if (Object.keys(actionNames).length) result.actionNames = actionNames;
   }
   for (const event of MESSAGE_EVENTS) {
@@ -1378,62 +1486,86 @@ function compactDisplayNames(names: Readonly<Record<string, string>>, defaults: 
     .map((key) => [key, names[key]]));
 }
 
-function compactArea(area: AreaValue, globalMessages: GlobalMessages): JsonRecord {
+function compactArea(area: AreaValue): JsonRecord {
   const result: JsonRecord = { name: area.name, mode: area.mode };
   if (area.schedules.length) result.schedules = [...area.schedules];
   if (Object.keys(area.actions || {}).length) result.actions = clone(area.actions);
-  if ((area.combat || []).length) result.combat = clone(area.combat);
-  const resolved = normalizeMessages(area.messages, globalMessages, false);
-  const compact = compactMessages(resolved, globalMessages, false);
-  if (Object.keys(compact).length) result.messages = compact;
+  if (Object.keys(area.combat || {}).length) result.combat = clone(area.combat);
+  if (Object.keys(area.messages || {}).length) result.messages = clone(area.messages);
   return result;
+}
+
+function compactSettings(settings: RuntimeSettingsValue): JsonRecord {
+  return {
+    playerSweepSeconds: settings.playerSweepSeconds,
+    ...(settings.hotReload ? { hotReload: true } : {}),
+    ...(settings.hotReloadSeconds !== 0 ? { hotReloadSeconds: settings.hotReloadSeconds } : {}),
+    ...(settings.worldRules ? { worldRules: true } : {}),
+    ...(settings.adminBypass ? { adminBypass: true } : {}),
+    ...(settings.mountGraceSeconds !== 0 ? { mountGraceSeconds: settings.mountGraceSeconds } : {}),
+    ...(settings.debugLogging ? { debugLogging: true } : {})
+  };
+}
+
+function compactScheduleOutput(output: ScheduleOutput): JsonRecord | null {
+  const result: JsonRecord = {};
+  if (output.enabled) result.enabled = true;
+  if (output.text) result.text = output.text;
+  return Object.keys(result).length ? result : null;
 }
 
 export function serializeConfig(input: unknown): JsonRecord {
   const config = hydrateConfig(input);
-  const result = {
+  const result: JsonRecord = {
     $schema: `./${SCHEMA_FILE_NAME}`,
     version: CONFIG_VERSION,
-    regionalCombat: clone(config.regionalCombat),
-    settings: clone(config.settings),
-    messages: compactMessages(config.messages, DEFAULT_MESSAGES, true),
-    schedules: config.schedules.map((schedule) => ({
+    ...(config.regionalCombat.enabled ? { regionalCombat: { enabled: true } } : {}),
+    settings: compactSettings(config.settings),
+    ...(() => {
+      const messages = compactMessages(config.messages, NEUTRAL_MESSAGES, true);
+      return Object.keys(messages).length ? { messages } : {};
+    })(),
+    ...(config.schedules.length ? { schedules: config.schedules.map((schedule) => ({
       id: schedule.id,
       name: schedule.name,
-      enabled: schedule.enabled,
+      ...(schedule.enabled ? { enabled: true } : {}),
       days: [...schedule.days],
       startTime: schedule.startTime,
       ...(schedule.endTime ? { endTime: schedule.endTime } : {}),
       ...(schedule.mode ? { mode: schedule.mode } : {}),
-      announcements: schedule.announcements.map((announcement) => ({
-        enabled: announcement.enabled,
-        relativeTo: announcement.relativeTo,
-        minutesBefore: announcement.minutesBefore,
-        globalChat: clone(announcement.globalChat),
-        serverNotice: clone(announcement.serverNotice)
-      }))
-    })),
+      ...(schedule.announcements.length ? { announcements: schedule.announcements.map((announcement) => {
+        const globalChat = compactScheduleOutput(announcement.globalChat);
+        const serverNotice = compactScheduleOutput(announcement.serverNotice);
+        return {
+          ...(announcement.enabled ? { enabled: true } : {}),
+          relativeTo: announcement.relativeTo,
+          minutesBefore: announcement.minutesBefore,
+          ...(globalChat ? { globalChat } : {}),
+          ...(serverNotice ? { serverNotice } : {})
+        };
+      }) } : {})
+    })) } : {}),
     modes: config.modes.map((mode) => ({
       id: mode.id,
       name: mode.name,
       color: mode.color,
-      minimumLevel: mode.minimumLevel,
+      ...(mode.minimumLevel !== null ? { minimumLevel: mode.minimumLevel } : {}),
       actions: clone(mode.actions),
       combat: clone(mode.combat),
       ...(Object.keys(mode.messages || {}).length ? { messages: clone(mode.messages) } : {})
     })),
-    wilderness: compactArea(config.wilderness, config.messages),
-    stageAreas: compactArea(config.stageAreas, config.messages),
-    regions: config.regions.map((region) => {
-      const area = compactArea(region, config.messages);
+    wilderness: compactArea(config.wilderness),
+    stageAreas: compactArea(config.stageAreas),
+    ...(config.regions.length ? { regions: config.regions.map((region) => {
+      const area = compactArea(region);
       return {
         ...area,
-        ...(region.enabled === false ? { enabled: false } : {}),
-        ...(region.minimumLevel !== null ? { minimumLevel: region.minimumLevel } : {}),
-        ...(region.map !== "world" ? { map: region.map } : {}),
+        ...(region.enabled ? { enabled: true } : {}),
+        ...(Object.hasOwn(region, "minimumLevel") ? { minimumLevel: region.minimumLevel ?? null } : {}),
+        map: region.map,
         polygon: region.polygon.map(([x, y]) => [Number(x), Number(y)])
       };
-    })
+    }) } : {})
   };
   return result;
 }
@@ -1443,6 +1575,48 @@ export function stringifyConfig(input: unknown): string {
 }
 
 function currentMigrationRegistry(): MigrationDefinition[] {
+  const validateLegacyActionNames = (document: JsonObject) => {
+    const messages = isPlainObject(document.messages) ? document.messages : null;
+    const names = messages && isPlainObject(messages.actionNames) ? messages.actionNames : null;
+    if (!names) return;
+    for (const [key, value] of Object.entries(names)) {
+      if (value === "") {
+        throw new Error(`messages.actionNames.${key} must contain between 1 and 96 characters in Configuration Versions 1 through 4.`);
+      }
+    }
+  };
+  const validateLegacyMessageShape = (document: JsonObject) => {
+    const messages = isPlainObject(document.messages) ? document.messages : null;
+    if (!messages) return;
+    if (Object.hasOwn(messages, "notifyOnFirstLocation")) {
+      throw new Error("messages.notifyOnFirstLocation is not supported.");
+    }
+    for (const eventName of [...MESSAGE_EVENTS.map(({ id }) => id), "pvpWarning"]) {
+      const event = isPlainObject(messages[eventName]) ? messages[eventName] : null;
+      if (!event) continue;
+      for (const key of Object.keys(event)) {
+        if (!["enabled", "cooldownSeconds", "chat", "alerts"].includes(key)) {
+          throw new Error(`messages.${eventName}.${key} is not supported.`);
+        }
+      }
+      const alerts = isPlainObject(event.alerts) ? event.alerts : null;
+      if (!alerts) continue;
+      for (const key of Object.keys(alerts)) {
+        if (!["brief", "activity"].includes(key)) {
+          throw new Error(`messages.${eventName}.alerts.${key} is not supported.`);
+        }
+      }
+      const brief = isPlainObject(alerts.brief) ? alerts.brief : null;
+      if (brief && Object.hasOwn(brief, "tone") &&
+          (typeof brief.tone !== "string" || !ALERT_TONE_IDS.has(brief.tone))) {
+        throw new Error(`messages.${eventName}.alerts.brief.tone must be normal or negative.`);
+      }
+      const activity = isPlainObject(alerts.activity) ? alerts.activity : null;
+      if (activity && Object.hasOwn(activity, "tone")) {
+        throw new Error(`messages.${eventName}.alerts.activity.tone is not supported.`);
+      }
+    }
+  };
   const validateVersion1MessageText = (document: JsonObject) => {
     const validateChannel = (value: unknown, context: string, maximum: number) => {
       if (typeof value === "string" && value.length === 0) {
@@ -1691,11 +1865,119 @@ function currentMigrationRegistry(): MigrationDefinition[] {
     migrateArea(document.stageAreas);
     if (Array.isArray(document.regions)) document.regions.forEach(migrateArea);
   };
+  const migrateV4ToV5 = (document: JsonObject, report: MigrationReportEntry[] = []) => {
+    const materialize = (object: JsonObject, key: string, value: unknown, path: string) => {
+      if (Object.hasOwn(object, key)) return;
+      object[key] = clone(value);
+      addMigrationFallback(report, {
+        fromVersion: 4,
+        toVersion: 5,
+        path: `${path}.${key}`,
+        message: "Materialized the frozen Configuration Version 4 effective value because Version 5 omission uses a neutral fallback."
+      });
+    };
+    const pruneEmptyOverrideObjects = (value: JsonObject, path: string) => {
+      for (const [key, entry] of Object.entries(value)) {
+        if (!isPlainObject(entry)) continue;
+        pruneEmptyOverrideObjects(entry, `${path}.${key}`);
+        if (Object.keys(entry).length) continue;
+        delete value[key];
+        addMigrationFallback(report, {
+          fromVersion: 4,
+          toVersion: 5,
+          path: `${path}.${key}`,
+          message: "Removed an empty no-op override object; Version 5 expresses inheritance by omitting the override."
+        });
+      }
+    };
+    const expandCombatOverrides = (area: unknown, path: string) => {
+      if (!isPlainObject(area) || !Array.isArray(area.combat)) return;
+      const sparse: JsonObject = {};
+      area.combat.forEach((rawEntry, index) => {
+        if (isPlainObject(rawEntry) && Object.hasOwn(rawEntry, "damage")) {
+          throw new Error(`${path}.combat[${index}].damage is not supported in PalLaw 0.2.0; use allow=true or allow=false.`);
+        }
+        if (!isPlainObject(rawEntry) || typeof rawEntry.allow !== "boolean") return;
+        const sources = Array.isArray(rawEntry.source) ? rawEntry.source : [rawEntry.source];
+        const targets = Array.isArray(rawEntry.target) ? rawEntry.target : [rawEntry.target];
+        for (const source of sources) {
+          if (typeof source !== "string" || !SOURCE_ACTOR_IDS.has(source)) continue;
+          const row = isPlainObject(sparse[source]) ? sparse[source] : (sparse[source] = {} as JsonObject) as JsonObject;
+          for (const target of targets) {
+            if (typeof target !== "string" || !ACTOR_IDS.has(target)) continue;
+            row[target] = rawEntry.allow;
+            if (rawEntry.bidirectional === true && SOURCE_ACTOR_IDS.has(target) && target !== "structure" && target !== "environment") {
+              const reverse = isPlainObject(sparse[target]) ? sparse[target] : (sparse[target] = {} as JsonObject) as JsonObject;
+              reverse[source] = rawEntry.allow;
+            }
+          }
+        }
+      });
+      if (Object.keys(sparse).length) area.combat = sparse;
+      else delete area.combat;
+      addMigrationFallback(report, {
+        fromVersion: 4,
+        toVersion: 5,
+        path: `${path}.combat`,
+        message: "Expanded ordered combat selector entries into the sparse source-to-target override matrix used by Version 5."
+      });
+    };
+    const migrateArea = (area: unknown, path: string, region = false) => {
+      if (!isPlainObject(area)) return;
+      expandCombatOverrides(area, path);
+      if (isPlainObject(area.actions)) pruneEmptyOverrideObjects(area.actions, `${path}.actions`);
+      if (isPlainObject(area.actions) && !Object.keys(area.actions).length) delete area.actions;
+      if (isPlainObject(area.messages)) {
+        pruneEmptyOverrideObjects(area.messages, `${path}.messages`);
+        if (!Object.keys(area.messages).length) delete area.messages;
+      }
+      if (region) {
+        materialize(area, "enabled", true, path);
+        materialize(area, "map", "world", path);
+      }
+    };
+
+    const regionalCombat = isPlainObject(document.regionalCombat)
+      ? document.regionalCombat
+      : (document.regionalCombat = {} as JsonObject) as JsonObject;
+    materialize(regionalCombat, "enabled", DEFAULT_REGIONAL_COMBAT.enabled, "$.regionalCombat");
+    const settings = isPlainObject(document.settings)
+      ? document.settings
+      : (document.settings = {} as JsonObject) as JsonObject;
+    for (const [key, value] of Object.entries(DEFAULT_SETTINGS)) materialize(settings, key, value, "$.settings");
+    document.messages = clone(normalizeMessages(document.messages, DEFAULT_MESSAGES, true)) as unknown as JsonObject;
+    addMigrationFallback(report, {
+      fromVersion: 4,
+      toVersion: 5,
+      path: "$.messages",
+      message: "Materialized the complete frozen Version 4 global message definitions because Version 5 omitted messages are disabled and empty."
+    });
+    if (Array.isArray(document.schedules)) {
+      document.schedules.forEach((schedule, scheduleIndex) => {
+        if (!isPlainObject(schedule)) return;
+        materialize(schedule, "enabled", true, `$.schedules[${scheduleIndex}]`);
+        if (Array.isArray(schedule.announcements)) schedule.announcements.forEach((announcement, announcementIndex) => {
+          if (isPlainObject(announcement)) materialize(announcement, "enabled", true, `$.schedules[${scheduleIndex}].announcements[${announcementIndex}]`);
+        });
+      });
+    }
+    if (Array.isArray(document.modes)) document.modes.forEach((mode, index) => {
+      if (isPlainObject(mode) && isPlainObject(mode.messages)) {
+        pruneEmptyOverrideObjects(mode.messages, `$.modes[${index}].messages`);
+        if (!Object.keys(mode.messages).length) delete mode.messages;
+      }
+    });
+    migrateArea(document.wilderness, "$.wilderness");
+    migrateArea(document.stageAreas, "$.stageAreas");
+    if (Array.isArray(document.regions)) document.regions.forEach((region, index) => migrateArea(region, `$.regions[${index}]`, true));
+  };
   return [
     {
       version: 1,
       validate(document) {
         validateVersion1MessageText(document);
+        validateLegacyActionNames(document);
+        validateLegacyMessageShape(document);
         if (Object.hasOwn(document, "damage")) {
           throw new Error("Configuration Version 1 does not allow the damage object.");
         }
@@ -1703,7 +1985,8 @@ function currentMigrationRegistry(): MigrationDefinition[] {
         migrateV1ToV2(candidate, []);
         migrateV2ToV3(candidate);
         migrateV3ToV4(candidate);
-        candidate.version = 4;
+        migrateV4ToV5(candidate);
+        candidate.version = 5;
         const validation = validateConfig(candidate);
         if (!validation.valid) throw new Error(validation.errors.join("\n"));
       },
@@ -1712,10 +1995,13 @@ function currentMigrationRegistry(): MigrationDefinition[] {
     {
       version: 2,
       validate(document) {
+        validateLegacyActionNames(document);
+        validateLegacyMessageShape(document);
         const candidate = clone(document);
         migrateV2ToV3(candidate);
         migrateV3ToV4(candidate);
-        candidate.version = 4;
+        migrateV4ToV5(candidate);
+        candidate.version = 5;
         const validation = validateConfig(candidate);
         if (!validation.valid) throw new Error(validation.errors.join("\n"));
       },
@@ -1724,9 +2010,11 @@ function currentMigrationRegistry(): MigrationDefinition[] {
     {
       version: 3,
       validate(document) {
+        validateLegacyActionNames(document);
         const candidate = clone(document);
         migrateV3ToV4(candidate);
-        candidate.version = 4;
+        migrateV4ToV5(candidate);
+        candidate.version = 5;
         const validation = validateConfig(candidate);
         if (!validation.valid) throw new Error(validation.errors.join("\n"));
       },
@@ -1734,6 +2022,18 @@ function currentMigrationRegistry(): MigrationDefinition[] {
     },
     {
       version: 4,
+      validate(document) {
+        validateLegacyActionNames(document);
+        const candidate = clone(document);
+        migrateV4ToV5(candidate);
+        candidate.version = 5;
+        const validation = validateConfig(candidate);
+        if (!validation.valid) throw new Error(validation.errors.join("\n"));
+      },
+      migrateToNext: migrateV4ToV5
+    },
+    {
+      version: 5,
       validate(document) {
         const validation = validateConfig(document);
         if (!validation.valid) throw new Error(validation.errors.join("\n"));

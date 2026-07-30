@@ -28,7 +28,7 @@ export interface AreaValue {
   mode: string;
   schedules: string[];
   actions: Record<string, ActionValue | undefined>;
-  combat: Array<{ source: string | string[]; target: string | string[]; allow?: boolean; bidirectional?: boolean }>;
+  combat: Record<string, Record<string, boolean | undefined>>;
   messages: Record<string, EventMessage>;
   _modeDefinition?: ModeValue;
 }
@@ -59,7 +59,7 @@ export interface ScheduleValue {
 
 export interface RegionValue extends AreaValue {
   enabled: boolean;
-  minimumLevel: number | null;
+  minimumLevel?: number | null;
   map: string;
   polygon: Point[];
 }
