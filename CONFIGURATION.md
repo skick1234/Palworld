@@ -8,7 +8,7 @@ Pal/Binaries/Win64/Mods/PalLaw/PalLaw.json
 
 The file is plain JSON. JSON is used because the DLL and the browser editor can share the same data model, the bundled JSON Schema can validate it, and no additional parser dependency is required in the production mod.
 
-Configuration Version 5 accepts UTF-8 with or without a UTF-8 BOM. The raw file is limited to 4 MiB inclusive, the BOM counts toward that limit, JSON container nesting is limited to 32, and duplicate object keys are rejected at every depth before object construction. UTF-16, UTF-32, and invalid UTF-8 are rejected.
+Configuration Version 6 accepts UTF-8 with or without a UTF-8 BOM. The raw file is limited to 4 MiB inclusive, the BOM counts toward that limit, JSON container nesting is limited to 32, and duplicate object keys are rejected at every depth before object construction. UTF-16, UTF-32, and invalid UTF-8 are rejected.
 
 Every current document carries its ordered mode definitions. Rules Studio creates
 the Safe, PvE, and PvP starter modes for a new document; they are ordinary
@@ -34,7 +34,7 @@ released, or unloaded.
 ## Top-level fields
 
 - `$schema`: optional relative path used by editors.
-- `version`: required and currently `5`.
+- `version`: required and currently `6`.
 - `regionalCombat`: optional master combat-authority control. Omission disables it.
 - `settings`: required runtime tuning; `playerSweepSeconds` is always required.
 - `messages`: optional global player-message configuration. Omitted events, channels, text, and action names are disabled or empty.
@@ -53,7 +53,7 @@ An **area** is Wilderness, the shared Stage Areas policy, or a polygon Region.
 Stage Areas applies with fixed, exclusive priority whenever Palworld identifies
 an actor as inside a Dungeon, Boss Battle, Arena, Room, or Raid Boss stage. In
 that case polygon Regions and Wilderness are not evaluated, even when the
-stage's hidden world coordinates overlap a Region. Configuration Version 5 has
+stage's hidden world coordinates overlap a Region. Configuration Version 6 has
 one shared Stage Areas policy; it does not configure stage types or instances
 separately.
 
@@ -131,7 +131,7 @@ Schedules and announcement rows have no delivery identity or deduplication. Dupl
 - a case-insensitively unique `name` of at most 96 characters;
 - a `#RRGGBB` color;
 - an optional `minimumLevel` containing `null` or an integer from 1 to 999; `null` and omission both mean no mode-level constraint;
-- every Player Action value, including Fast Travel Departure and Arrival policies;
+- every Player Action value, including Fast Travel Departure, Arrival, and cross-area endpoint permissions;
 - every source and target cell in the dense binary combat matrix;
 - optional sparse message overrides.
 
@@ -161,6 +161,8 @@ individual actions:
   "editLock": false,
   "fastTravelDeparture": "all",
   "fastTravelArrival": "baseOnly",
+  "fastTravelCrossRegionsDeparture": true,
+  "fastTravelCrossRegionsArrival": true,
   "decay": false
 }
 ```
@@ -175,6 +177,8 @@ Supported actions:
 - `editLock`
 - `fastTravelDeparture`: control the route shape for trips started while physically inside the area with `"all"`, `"baseToAll"`, `"baseToBase"`, `"allToBase"`, or `"none"`
 - `fastTravelArrival`: control landing destinations with `"all"`, `"baseOnly"`, or `"none"`
+- `fastTravelCrossRegionsDeparture`: allow departure when the destination is in a different effective area; the origin area's gate is checked only for cross-area trips
+- `fastTravelCrossRegionsArrival`: allow arrival from a different effective area; the destination area's gate is checked only for cross-area trips
 - `decay`
 
 Departure route policies mean:
@@ -188,6 +192,15 @@ Departure route policies mean:
 The origin area's Departure policy is evaluated first. The destination area's
 Arrival policy is then evaluated independently, so an otherwise valid route
 can still be rejected by the new area's `"baseOnly"` or `"none"` policy.
+
+When the departure and destination effective areas differ, both cross-area
+endpoint gates must allow the trip. Effective areas include Wilderness, Stage
+Areas, and named polygon Regions; a trip that remains in one effective area
+does not use either gate. PalLaw checks a resolved destination before the
+server travel call and checks the actual physical landing again. If the
+requested destination cannot be resolved, the request remains fail-open and
+the landing check decides once the effective destination is known. A denial
+uses the first failing endpoint's `ActionDenied` message and display name.
 
 An area action set to **Default** is omitted and inherits its selected mode.
 Editing or switching a mode never removes an area override.
@@ -244,7 +257,7 @@ The Version 2 contract rejects `damage` multipliers. When a Version 1 file is mi
 
 Relationships are directed. Configure both cells explicitly when the same
 decision should apply in both directions. Selector arrays and `bidirectional`
-are valid only in older configuration versions and migrate to explicit v5 cells.
+are valid only in older configuration versions and migrate to explicit v6 cells.
 
 ## Level requirements
 
@@ -290,7 +303,7 @@ display name is its `name` field and is used by `{mode}`.
 }
 ```
 
-Supported `actionNames` keys are `build`, `dismantle`, `ride`, `fly`, `editSign`, `editLock`, `fastTravelDeparture`, `fastTravelArrival`, and `decay`.
+Supported `actionNames` keys are `build`, `dismantle`, `ride`, `fly`, `editSign`, `editLock`, `fastTravelDeparture`, `fastTravelArrival`, `fastTravelCrossRegionsDeparture`, `fastTravelCrossRegionsArrival`, and `decay`.
 
 Events:
 
@@ -384,6 +397,12 @@ or unconstrained; override omission inherits. It also replaces Area combat
 selector arrays with sparse mode-style matrices and gives Region
 `minimumLevel` distinct omit/integer/`null` inheritance semantics. The v4→v5
 migration materializes v4 effective defaults before adopting those rules.
+
+Configuration Version 6 adds independent boolean cross-area Fast Travel
+departure and arrival gates. Every Mode declares both permissions; an Area may
+override either one sparsely, and omission inherits the selected Mode. The
+v5-to-v6 migration defaults both new endpoint permissions to allow and adds
+their display names when the global action-name object is present.
 
 Rules Studio and the DLL migrate every released older Configuration Version forward through each adjacent version. The declared source and every intermediate result must validate before the migrated document can be used. A document without `version` is reported and treated as version 1 only when it passes the complete version-1 contract. Invalid, unknown, and newer versions are rejected; reverse migration is not supported.
 

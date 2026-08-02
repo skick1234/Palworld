@@ -1,6 +1,6 @@
 {
   "$schema": "./PalLaw.schema.json",
-  "version": 5,
+  "version": 6,
   "settings": {
     "playerSweepSeconds": 0.25,
     "hotReload": true,
@@ -20,7 +20,9 @@
       "editLock": "Lock editing",
       "decay": "Building decay",
       "fastTravelDeparture": "Fast Travel Departure",
-      "fastTravelArrival": "Fast Travel Arrival"
+      "fastTravelArrival": "Fast Travel Arrival",
+      "fastTravelCrossRegionsDeparture": "Fast Travel Cross Regions Departure",
+      "fastTravelCrossRegionsArrival": "Fast Travel Cross Regions Arrival"
     },
     "regionChanged": {
       "enabled": true,
@@ -93,7 +95,9 @@
         "editLock": true,
         "decay": true,
         "fastTravelDeparture": "all",
-        "fastTravelArrival": "all"
+        "fastTravelArrival": "all",
+        "fastTravelCrossRegionsDeparture": true,
+        "fastTravelCrossRegionsArrival": true
       },
       "combat": {
         "player": {

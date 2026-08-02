@@ -610,9 +610,9 @@ input[type="number"] { font-family: var(--font-mono); font-variant-numeric: tabu
 .matrix-cell-secondary { color: var(--faint); font-size: 0.72rem; font-weight: 650; letter-spacing: 0.025em; }
 .matrix-cell.is-override .matrix-cell-secondary { color: color-mix(in srgb, var(--matrix-state) 62%, var(--text)); }
 .action-matrix-grid { display: flex; flex-flow: row wrap; gap: 8px; }
-.action-matrix-item { flex: 1 1 132px; min-width: 0; }
-.action-matrix-item .matrix-cell { min-width: 0; min-height: 0; padding: 8px 10px; border-radius: var(--control-radius); }
-.action-cell-name { max-width: 100%; overflow: hidden; color: var(--text); font-family: var(--font-sans); font-size: 0.76rem; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.action-matrix-item { flex: 1 1 auto; width: fit-content; max-width: 100%; min-width: min(132px, 100%); }
+.action-matrix-item .matrix-cell { min-width: 0; min-height: 0; padding: 12px 10px; border-radius: var(--control-radius); }
+.action-cell-name { max-width: 100%; overflow-wrap: anywhere; color: var(--text); font-family: var(--font-sans); font-size: 0.76rem; font-weight: 700; white-space: normal; }
 
 .rules-stack { display: grid; gap: 18px; }
 .rules-stack > .section-card { margin-top: 0; }
@@ -1206,6 +1206,8 @@ body { background: var(--bg); }
 .announcement-timing-grid,
 .announcement-channel-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .schedule-id-mode-grid { grid-template-columns: minmax(0, 1fr) max-content; align-items: start; }
+.schedule-mode-select { height: 36px; }
+.schedule-mode-select summary { min-height: 34px; padding: 5px 10px; }
 .weekday-picker { display: grid; grid-template-columns: repeat(7, minmax(42px, 1fr)); gap: 6px; }
 .weekday-picker button { min-height: 38px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel-deep); color: var(--muted); cursor: pointer; font: 700 0.76rem var(--font-mono); }
 .weekday-picker button:hover { border-color: var(--line-strong); color: var(--text); }

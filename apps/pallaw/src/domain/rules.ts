@@ -1,4 +1,4 @@
-export const CONFIG_VERSION = 5;
+export const CONFIG_VERSION = 6;
 export const CONFIG_FILE_NAME = "PalLaw.json";
 export const SCHEMA_FILE_NAME = "PalLaw.schema.json";
 
@@ -90,6 +90,16 @@ export const ACTIONS = [
     label: "Fast travel arrival",
     description: "Choose whether arrivals inside this area may use every destination, base camps only, or no destination.",
     fastTravelPolicy: true
+  },
+  {
+    id: "fastTravelCrossRegionsDeparture",
+    label: "Cross-area travel departure",
+    description: "Allow Fast Travel Departure when the destination is in a different effective area. The destination area's arrival gate is checked separately."
+  },
+  {
+    id: "fastTravelCrossRegionsArrival",
+    label: "Cross-area travel arrival",
+    description: "Allow Fast Travel Arrival from a different effective area. The origin area's departure gate is checked separately."
   }
 ];
 
@@ -128,6 +138,20 @@ function isFastTravelPolicy(actionId: string, value: unknown): value is ActionVa
 }
 
 export const DEFAULT_ACTION_NAMES = Object.freeze({
+  build: "Building",
+  dismantle: "Dismantling",
+  ride: "Non-flying riding",
+  fly: "Flying mount use",
+  editSign: "Sign editing",
+  editLock: "Lock editing",
+  decay: "Building decay",
+  fastTravelDeparture: "Fast Travel Departure",
+  fastTravelArrival: "Fast Travel Arrival",
+  fastTravelCrossRegionsDeparture: "Fast Travel Cross Regions Departure",
+  fastTravelCrossRegionsArrival: "Fast Travel Cross Regions Arrival"
+});
+
+const LEGACY_DEFAULT_ACTION_NAMES = Object.freeze({
   build: "Building",
   dismantle: "Dismantling",
   ride: "Non-flying riding",
@@ -259,6 +283,11 @@ export const DEFAULT_MESSAGES: Readonly<GlobalMessages> = Object.freeze({
     chat: { enabled: false, text: "Level {minimumLevel} is required to enter {region}." },
     alerts: defaultAlerts("Level {minimumLevel} required - {region}", "brief", "negative")
   }
+});
+
+const LEGACY_DEFAULT_MESSAGES: Readonly<GlobalMessages> = Object.freeze({
+  ...DEFAULT_MESSAGES,
+  actionNames: { ...LEGACY_DEFAULT_ACTION_NAMES }
 });
 
 function neutralMessage(): EventMessage {
@@ -1945,7 +1974,7 @@ function currentMigrationRegistry(): MigrationDefinition[] {
       ? document.settings
       : (document.settings = {} as JsonObject) as JsonObject;
     for (const [key, value] of Object.entries(DEFAULT_SETTINGS)) materialize(settings, key, value, "$.settings");
-    document.messages = clone(normalizeMessages(document.messages, DEFAULT_MESSAGES, true)) as unknown as JsonObject;
+    document.messages = clone(normalizeMessages(document.messages, LEGACY_DEFAULT_MESSAGES, true)) as unknown as JsonObject;
     addMigrationFallback(report, {
       fromVersion: 4,
       toVersion: 5,
@@ -1971,6 +2000,42 @@ function currentMigrationRegistry(): MigrationDefinition[] {
     migrateArea(document.stageAreas, "$.stageAreas");
     if (Array.isArray(document.regions)) document.regions.forEach((region, index) => migrateArea(region, `$.regions[${index}]`, true));
   };
+  const migrateV5ToV6 = (document: JsonObject, report: MigrationReportEntry[]) => {
+    const materializeModeAction = (actions: JsonObject, key: string, path: string) => {
+      if (Object.hasOwn(actions, key)) return;
+      actions[key] = true;
+      addMigrationFallback(report, {
+        fromVersion: 5,
+        toVersion: 6,
+        path: `${path}.${key}`,
+        message: "Configuration Version 5 had no cross-area Fast Travel endpoint permission; defaulted to allow."
+      });
+    };
+    if (Array.isArray(document.modes)) {
+      document.modes.forEach((mode, index) => {
+        if (!isPlainObject(mode) || !isPlainObject(mode.actions)) return;
+        const path = `$.modes[${index}].actions`;
+        materializeModeAction(mode.actions, "fastTravelCrossRegionsDeparture", path);
+        materializeModeAction(mode.actions, "fastTravelCrossRegionsArrival", path);
+      });
+    }
+    const messages = isPlainObject(document.messages) ? document.messages : null;
+    const actionNames = messages && isPlainObject(messages.actionNames) ? messages.actionNames : null;
+    if (!actionNames) return;
+    const materializeActionName = (key: string, value: string) => {
+      if (Object.hasOwn(actionNames, key)) return;
+      actionNames[key] = value;
+      addMigrationFallback(report, {
+        fromVersion: 5,
+        toVersion: 6,
+        path: `$.messages.actionNames.${key}`,
+        message: "Added the default cross-area Fast Travel endpoint display name for Configuration Version 6."
+      });
+    };
+    materializeActionName("fastTravelCrossRegionsDeparture", "Fast Travel Cross Regions Departure");
+    materializeActionName("fastTravelCrossRegionsArrival", "Fast Travel Cross Regions Arrival");
+  };
+
   return [
     {
       version: 1,
@@ -1986,7 +2051,8 @@ function currentMigrationRegistry(): MigrationDefinition[] {
         migrateV2ToV3(candidate);
         migrateV3ToV4(candidate);
         migrateV4ToV5(candidate);
-        candidate.version = 5;
+        migrateV5ToV6(candidate, []);
+        candidate.version = 6;
         const validation = validateConfig(candidate);
         if (!validation.valid) throw new Error(validation.errors.join("\n"));
       },
@@ -2001,7 +2067,8 @@ function currentMigrationRegistry(): MigrationDefinition[] {
         migrateV2ToV3(candidate);
         migrateV3ToV4(candidate);
         migrateV4ToV5(candidate);
-        candidate.version = 5;
+        migrateV5ToV6(candidate, []);
+        candidate.version = 6;
         const validation = validateConfig(candidate);
         if (!validation.valid) throw new Error(validation.errors.join("\n"));
       },
@@ -2014,7 +2081,8 @@ function currentMigrationRegistry(): MigrationDefinition[] {
         const candidate = clone(document);
         migrateV3ToV4(candidate);
         migrateV4ToV5(candidate);
-        candidate.version = 5;
+        migrateV5ToV6(candidate, []);
+        candidate.version = 6;
         const validation = validateConfig(candidate);
         if (!validation.valid) throw new Error(validation.errors.join("\n"));
       },
@@ -2026,7 +2094,8 @@ function currentMigrationRegistry(): MigrationDefinition[] {
         validateLegacyActionNames(document);
         const candidate = clone(document);
         migrateV4ToV5(candidate);
-        candidate.version = 5;
+        migrateV5ToV6(candidate, []);
+        candidate.version = 6;
         const validation = validateConfig(candidate);
         if (!validation.valid) throw new Error(validation.errors.join("\n"));
       },
@@ -2034,6 +2103,19 @@ function currentMigrationRegistry(): MigrationDefinition[] {
     },
     {
       version: 5,
+      validate(document) {
+        const candidate = clone(document) as unknown as JsonObject;
+        migrateV5ToV6(candidate, []);
+        candidate.version = 6;
+        const validation = validateConfig(candidate);
+        if (!validation.valid) throw new Error(validation.errors.join("\n"));
+      },
+      migrateToNext(document, report) {
+        migrateV5ToV6(document, report);
+      }
+    },
+    {
+      version: 6,
       validate(document) {
         const validation = validateConfig(document);
         if (!validation.valid) throw new Error(validation.errors.join("\n"));

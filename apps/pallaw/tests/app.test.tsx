@@ -1,8 +1,12 @@
 import { cleanup, fireEvent, render, screen } from "@solidjs/testing-library";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { App } from "../src/ui/App";
 import { createPalLawDocument } from "../src/document/create-pallaw-document";
 import { createMemoryDraftAdapter } from "../src/document/local-draft-adapter";
+
+const styles = readFileSync(resolve(process.cwd(), "apps/pallaw/src/styles.css"), "utf8");
 
 describe("PalLaw application", () => {
   afterEach(cleanup);
@@ -38,6 +42,10 @@ describe("PalLaw application", () => {
     const assignMode = screen.getByLabelText("Announcements only. Assign mode");
     expect(screen.getByLabelText("ID").closest(".schedule-id-mode-grid")).toBe(assignMode.closest(".schedule-id-mode-grid"));
     expect(screen.queryByText("Stable reference used by assigned Areas.")).toBeNull();
+    const inputHeight = styles.match(/input, select, textarea \{[^}]*min-height:\s*([^;]+);/s)?.[1];
+    const scheduleModeHeight = styles.match(/\.schedule-mode-select\s*\{[^}]*height:\s*([^;]+);/s)?.[1];
+    expect(inputHeight).toBe("36px");
+    expect(scheduleModeHeight).toBe(inputHeight);
     expect(document.querySelector(".announcement-channels, .announcement-channel")).toBeNull();
 
     const globalChat = screen.getByLabelText("Global chat message") as HTMLTextAreaElement;

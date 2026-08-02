@@ -1,6 +1,6 @@
 {
   "$schema": "./PalLaw.schema.json",
-  "version": 5,
+  "version": 6,
   "regionalCombat": {
     "enabled": true
   },
@@ -18,7 +18,9 @@
     "actionNames": {
       "build": "Xây dựng",
       "fly": "Bay",
-      "fastTravelArrival": "Điểm đến dịch chuyển"
+      "fastTravelArrival": "Điểm đến dịch chuyển",
+      "fastTravelCrossRegionsDeparture": "Fast Travel Cross Regions Departure",
+      "fastTravelCrossRegionsArrival": "Fast Travel Cross Regions Arrival"
     },
     "regionChanged": {
       "enabled": true,
@@ -152,7 +154,9 @@
         "editSign": false,
         "editLock": false,
         "fastTravelDeparture": "all",
-        "fastTravelArrival": "none"
+        "fastTravelArrival": "none",
+        "fastTravelCrossRegionsDeparture": true,
+        "fastTravelCrossRegionsArrival": true
       },
       "combat": {
         "player": { "structure": false },
@@ -196,7 +200,9 @@
         "editLock": true,
         "decay": true,
         "fastTravelDeparture": "all",
-        "fastTravelArrival": "all"
+        "fastTravelArrival": "all",
+        "fastTravelCrossRegionsDeparture": true,
+        "fastTravelCrossRegionsArrival": true
       },
       "combat": {
         "player": {
@@ -275,7 +281,9 @@
         "editLock": true,
         "decay": true,
         "fastTravelDeparture": "all",
-        "fastTravelArrival": "all"
+        "fastTravelArrival": "all",
+        "fastTravelCrossRegionsDeparture": true,
+        "fastTravelCrossRegionsArrival": true
       },
       "combat": {
         "player": {
@@ -354,7 +362,9 @@
         "editLock": true,
         "decay": true,
         "fastTravelDeparture": "all",
-        "fastTravelArrival": "all"
+        "fastTravelArrival": "all",
+        "fastTravelCrossRegionsDeparture": true,
+        "fastTravelCrossRegionsArrival": true
       },
       "combat": {
         "player": {

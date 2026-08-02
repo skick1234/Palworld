@@ -42,9 +42,9 @@ export type Actor =
   "player" | "partnerPal" | "basePal" | "baseStructure" | "wildPal" | "npc" | "structure" | "environment";
 export type Point = [number, number];
 
-export interface PalLawConfigurationVersion5 {
+export interface PalLawConfigurationVersion6 {
   $schema?: string;
-  version: 5;
+  version: 6;
   regionalCombat?: RegionalCombat;
   settings: Settings;
   messages?: GlobalMessages;
@@ -119,6 +119,8 @@ export interface ActionNames {
   decay?: DisplayName;
   fastTravelDeparture?: DisplayName;
   fastTravelArrival?: DisplayName;
+  fastTravelCrossRegionsDeparture?: DisplayName;
+  fastTravelCrossRegionsArrival?: DisplayName;
 }
 export interface AlertChannels {
   brief?: BriefAlertChannel;
@@ -143,6 +145,8 @@ export interface Actions {
   decay?: boolean;
   fastTravelDeparture?: "all" | "baseToAll" | "baseToBase" | "allToBase" | "none";
   fastTravelArrival?: "all" | "baseOnly" | "none";
+  fastTravelCrossRegionsDeparture?: boolean;
+  fastTravelCrossRegionsArrival?: boolean;
 }
 export interface ModeCombat {
   player: TargetRow;
