@@ -416,7 +416,7 @@ code { font-family: var(--font-mono); font-size: 0.9em; }
 .sidebar-card-header, .sidebar-card-detail, .order-controls { position: relative; z-index: 2; }
 .sidebar-card-header { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 10px 12px 2px; }
 .sidebar-card-title { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.94rem; font-weight: 720; }
-.sidebar-card-detail { display: block; color: var(--faint); font-family: var(--font-mono); font-size: 0.75rem; font-variant-numeric: tabular-nums; padding: 3px 10px 8px; }
+.sidebar-card-detail { display: block; color: var(--faint); font-family: var(--font-mono); font-size: 0.75rem; font-variant-numeric: tabular-nums; padding: 3px 10px 4px; }
 .order-controls { display: flex; gap: 4px; padding: 0 12px 10px; }
 .empty-state {
   display: grid;
@@ -782,7 +782,7 @@ body { background: var(--bg); }
 .sidebar-card[tabindex]:hover, button.sidebar-card:hover { background: var(--panel-soft); transform: none; }
 .sidebar-card.selected { background: color-mix(in srgb, var(--accent) 9%, transparent); box-shadow: none !important; }
 .sidebar-card-header { padding: 12px 10px 3px; }
-.sidebar-card-detail { padding: 4px 10px 11px; }
+.sidebar-card-detail { padding: 4px 10px 4px; }
 .order-controls { padding: 0 10px 10px; }
 .message-nav-item { color: inherit; font: inherit; }
 .empty-state { min-height: 112px; border: 1px dashed var(--line-strong); border-radius: var(--control-radius); background: transparent; box-shadow: none; }
@@ -1001,7 +1001,8 @@ body { background: var(--bg); }
 .preview-box .preview-empty { color: #5f666a; }
 
 /* Selectable sidebar cards keep their content and footer actions as direct children. */
-.sidebar-card-footer { position: relative; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 10px 10px; }
+.sidebar-card-footer { position: relative; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px 10px; }
+.sidebar-card-footer-description { color: var(--faint); font: 0.75rem var(--font-mono); }
 .sidebar-card-footer .order-controls { padding: 0; }
 .sidebar-card-actions { display: flex; align-items: center; gap: 5px; margin-left: auto; }
 .wilderness-card { border-bottom-color: var(--line-strong); background: color-mix(in srgb, var(--accent) 5%, transparent); }

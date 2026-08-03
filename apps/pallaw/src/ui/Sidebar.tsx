@@ -71,8 +71,8 @@ export function RegionSidebar(props: RegionSidebarProps) {
         onKeyDown={(event) => { activateOnKeyboard(event, () => { props.onOpenWilderness(event.currentTarget); }); }}
       >
         <CardHeader title={props.wilderness.name}><ModeBadge modeId={props.wilderness.mode} modes={props.modes} /></CardHeader>
-        <CardDetail parts={[props.wilderness.name.trim().toLocaleLowerCase() === "wilderness" ? "Outside region" : "Wilderness"]} />
         <footer class="sidebar-card-footer wilderness-footer">
+          <span class="sidebar-card-footer-description">{props.wilderness.name.trim().toLocaleLowerCase() === "wilderness" ? "Outside region" : "Wilderness"}</span>
           <div class="sidebar-card-actions">
             <button type="button" class="sidebar-card-icon settings" title="Wilderness settings" aria-label={`Open settings for Wilderness ${props.wilderness.name}`} onClick={(event) => { event.stopPropagation(); props.onOpenWilderness(event.currentTarget); }}><Icon name="cog-6-tooth" /></button>
           </div>
@@ -87,8 +87,8 @@ export function RegionSidebar(props: RegionSidebarProps) {
         onKeyDown={(event) => { activateOnKeyboard(event, () => { props.onOpenStageAreas(event.currentTarget); }); }}
       >
         <CardHeader title={props.stageAreas.name}><ModeBadge modeId={props.stageAreas.mode} modes={props.modes} /></CardHeader>
-        <CardDetail parts={["Fixed stage priority"]} />
         <footer class="sidebar-card-footer wilderness-footer">
+          <span class="sidebar-card-footer-description">Fixed stage priority</span>
           <div class="sidebar-card-actions">
             <button type="button" class="sidebar-card-icon settings" title="Stage Areas settings" aria-label={`Open settings for Stage Areas ${props.stageAreas.name}`} onClick={(event) => { event.stopPropagation(); props.onOpenStageAreas(event.currentTarget); }}><Icon name="cog-6-tooth" /></button>
           </div>
