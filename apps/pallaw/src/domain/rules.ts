@@ -2074,6 +2074,19 @@ function currentMigrationRegistry(): MigrationDefinition[] {
         materializeSwimmingMount(mode.actions, path);
       });
     }
+    const renameAreaActions = (area: unknown, path: string) => {
+      if (!isPlainObject(area) || !isPlainObject(area.actions)) return;
+      renameAction(area.actions, `${path}.actions`, "ride", "groundMount", "Renamed mount key ride to groundMount for Version 7 ground mounts.");
+      renameAction(area.actions, `${path}.actions`, "fly", "flyingMount", "Renamed mount key fly to flyingMount for Version 7 flying mounts.");
+      renameAction(area.actions, `${path}.actions`, "swim", "swimmingMount", "Renamed mount key swim to swimmingMount for Version 7 swimming mounts.");
+    };
+    renameAreaActions(document.wilderness, "$.wilderness");
+    renameAreaActions(document.stageAreas, "$.stageAreas");
+    if (Array.isArray(document.regions)) {
+      document.regions.forEach((region, index) => {
+        renameAreaActions(region, `$.regions[${index}]`);
+      });
+    }
     const messages = isPlainObject(document.messages) ? document.messages : null;
     const actionNames = messages && isPlainObject(messages.actionNames) ? messages.actionNames : null;
     if (actionNames) {
