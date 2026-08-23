@@ -1,6 +1,6 @@
 {
   "$schema": "./PalLaw.schema.json",
-  "version": 6,
+  "version": 7,
   "settings": {
     "playerSweepSeconds": 0.25,
     "hotReload": true,
@@ -14,8 +14,9 @@
     "actionNames": {
       "build": "Building",
       "dismantle": "Dismantling",
-      "ride": "Non-flying riding",
-      "fly": "Flying mount use",
+      "groundMount": "Ground mount use",
+      "flyingMount": "Flying mount use",
+      "swimmingMount": "Swimming mount use",
       "editSign": "Sign editing",
       "editLock": "Lock editing",
       "decay": "Building decay",
@@ -89,8 +90,9 @@
       "actions": {
         "build": true,
         "dismantle": true,
-        "ride": true,
-        "fly": true,
+        "groundMount": true,
+        "flyingMount": true,
+        "swimmingMount": true,
         "editSign": true,
         "editLock": true,
         "decay": true,

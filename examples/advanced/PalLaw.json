@@ -1,6 +1,6 @@
 {
   "$schema": "./PalLaw.schema.json",
-  "version": 6,
+  "version": 7,
   "regionalCombat": {
     "enabled": true
   },
@@ -17,8 +17,9 @@
     "actionNames": {
       "build": "Xây dựng",
       "dismantle": "Dismantling",
-      "ride": "Non-flying riding",
-      "fly": "Bay",
+      "groundMount": "Ground mount use",
+      "flyingMount": "Bay",
+      "swimmingMount": "Swimming mount use",
       "editSign": "Sign editing",
       "editLock": "Lock editing",
       "decay": "Building decay",
@@ -147,8 +148,9 @@
       "actions": {
         "build": true,
         "dismantle": true,
-        "ride": true,
-        "fly": true,
+        "groundMount": true,
+        "flyingMount": true,
+        "swimmingMount": true,
         "editSign": true,
         "editLock": true,
         "decay": true,
@@ -227,8 +229,9 @@
       "actions": {
         "build": true,
         "dismantle": true,
-        "ride": true,
-        "fly": true,
+        "groundMount": true,
+        "flyingMount": true,
+        "swimmingMount": true,
         "editSign": true,
         "editLock": true,
         "decay": true,
@@ -307,8 +310,9 @@
       "actions": {
         "build": true,
         "dismantle": true,
-        "ride": true,
-        "fly": true,
+        "groundMount": true,
+        "flyingMount": true,
+        "swimmingMount": true,
         "editSign": true,
         "editLock": true,
         "decay": true,

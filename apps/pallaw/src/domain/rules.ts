@@ -1,4 +1,4 @@
-export const CONFIG_VERSION = 6;
+export const CONFIG_VERSION = 7;
 export const CONFIG_FILE_NAME = "PalLaw.json";
 export const SCHEMA_FILE_NAME = "PalLaw.schema.json";
 
@@ -74,8 +74,9 @@ export const ACTORS = [
 export const ACTIONS = [
   { id: "build", label: "Build", description: "Place structures and build objects." },
   { id: "dismantle", label: "Dismantle", description: "Dismantle structures and map objects." },
-  { id: "ride", label: "Non-flying mounts", description: "Begin or remain mounted on a non-flying Pal." },
-  { id: "fly", label: "Flying mounts", description: "Begin or remain mounted on a flying Pal." },
+  { id: "groundMount", label: "Ground mounts", description: "Begin or remain mounted on a ground Pal." },
+  { id: "flyingMount", label: "Flying mounts", description: "Begin or remain mounted on a flying Pal." },
+  { id: "swimmingMount", label: "Swimming mounts", description: "Begin or remain mounted on a swimming Pal." },
   { id: "editSign", label: "Edit signs", description: "Change sign text." },
   { id: "editLock", label: "Edit locks", description: "Change passwords and private chest locks." },
   { id: "decay", label: "Building decay", description: "Apply normal structure deterioration." },
@@ -140,8 +141,9 @@ function isFastTravelPolicy(actionId: string, value: unknown): value is ActionVa
 export const DEFAULT_ACTION_NAMES = Object.freeze({
   build: "Building",
   dismantle: "Dismantling",
-  ride: "Non-flying riding",
-  fly: "Flying mount use",
+  groundMount: "Ground mount use",
+  flyingMount: "Flying mount use",
+  swimmingMount: "Swimming mount use",
   editSign: "Sign editing",
   editLock: "Lock editing",
   decay: "Building decay",
@@ -155,7 +157,7 @@ const LEGACY_DEFAULT_ACTION_NAMES = Object.freeze({
   build: "Building",
   dismantle: "Dismantling",
   ride: "Non-flying riding",
-  fly: "Flying mount use",
+  flyingMount: "Flying mount use",
   editSign: "Sign editing",
   editLock: "Lock editing",
   decay: "Building decay",
@@ -812,7 +814,7 @@ export function deriveFeatureSummary(input: unknown) {
     needsWorldActionAuthorization ||= ["build", "dismantle", "editSign", "editLock"].some((action) => actions[action] === false);
     const minimumLevel = effectiveMinimumLevel(area, config);
     needsPlayerActionEnforcement ||= minimumLevel != null ||
-      ["ride", "fly"].some((action) => actions[action] === false);
+      ["groundMount", "flyingMount", "swimmingMount"].some((action) => actions[action] === false);
     needsFastTravelAuthorization ||= minimumLevel != null ||
       actions.fastTravelDeparture !== "all" ||
       actions.fastTravelArrival !== "all";
@@ -2035,6 +2037,101 @@ function currentMigrationRegistry(): MigrationDefinition[] {
     materializeActionName("fastTravelCrossRegionsDeparture", "Fast Travel Cross Regions Departure");
     materializeActionName("fastTravelCrossRegionsArrival", "Fast Travel Cross Regions Arrival");
   };
+  const migrateV6ToV7 = (document: JsonObject, report: MigrationReportEntry[]) => {
+    const renameAction = (actions: JsonObject, path: string, oldKey: string, newKey: string, message: string) => {
+      if (Object.hasOwn(actions, oldKey) && !Object.hasOwn(actions, newKey)) {
+        actions[newKey] = actions[oldKey];
+        delete actions[oldKey];
+        addMigrationFallback(report, {
+          fromVersion: 6,
+          toVersion: 7,
+          path: `${path}.${newKey}`,
+          message
+        });
+      } else if (Object.hasOwn(actions, oldKey) && Object.hasOwn(actions, newKey)) {
+        delete actions[oldKey];
+      }
+    };
+    const materializeSwimmingMount = (actions: JsonObject, path: string) => {
+      renameAction(actions, path, "ride", "groundMount", "Renamed mount key ride to groundMount for Version 7 ground mounts.");
+      renameAction(actions, path, "fly", "flyingMount", "Renamed mount key fly to flyingMount for Version 7 flying mounts.");
+      renameAction(actions, path, "swim", "swimmingMount", "Renamed mount key swim to swimmingMount for Version 7 swimming mounts.");
+      if (!Object.hasOwn(actions, "swimmingMount")) {
+        const rideValue = typeof actions["groundMount"] === "boolean" ? actions["groundMount"] : (typeof actions["ride"] === "boolean" ? actions["ride"] : true);
+        actions["swimmingMount"] = rideValue;
+        addMigrationFallback(report, {
+          fromVersion: 6,
+          toVersion: 7,
+          path: `${path}.swimmingMount`,
+          message: "Version 6 had no swimming mount use; defaulted swimmingMount to the previous ride value. Set swimmingMount explicitly to deny swimming mounts."
+        });
+      }
+    };
+    if (Array.isArray(document.modes)) {
+      document.modes.forEach((mode, index) => {
+        if (!isPlainObject(mode) || !isPlainObject(mode.actions)) return;
+        const path = `$.modes[${index}].actions`;
+        materializeSwimmingMount(mode.actions, path);
+      });
+    }
+    const messages = isPlainObject(document.messages) ? document.messages : null;
+    const actionNames = messages && isPlainObject(messages.actionNames) ? messages.actionNames : null;
+    if (actionNames) {
+      const renameName = (oldKey: string, newKey: string, display: string) => {
+        if (Object.hasOwn(actionNames, oldKey) && !Object.hasOwn(actionNames, newKey)) {
+          actionNames[newKey] = actionNames[oldKey];
+          delete actionNames[oldKey];
+          addMigrationFallback(report, {
+            fromVersion: 6,
+            toVersion: 7,
+            path: `$.messages.actionNames.${newKey}`,
+            message: `Renamed action display name ${oldKey} to ${newKey}.`
+          });
+        } else if (Object.hasOwn(actionNames, oldKey) && Object.hasOwn(actionNames, newKey)) {
+          delete actionNames[oldKey];
+        }
+        if (!Object.hasOwn(actionNames, newKey)) {
+          actionNames[newKey] = display;
+          addMigrationFallback(report, {
+            fromVersion: 6,
+            toVersion: 7,
+            path: `$.messages.actionNames.${newKey}`,
+            message: `Added the default ${display} display name for Configuration Version 7.`
+          });
+        }
+      };
+      renameName("ride", "groundMount", "Ground mount use");
+      renameName("fly", "flyingMount", "Flying mount use");
+      if (Object.hasOwn(actionNames, "swim") && !Object.hasOwn(actionNames, "swimmingMount")) {
+        actionNames["swimmingMount"] = actionNames["swim"];
+        delete actionNames["swim"];
+        addMigrationFallback(report, {
+          fromVersion: 6,
+          toVersion: 7,
+          path: "$.messages.actionNames.swimmingMount",
+          message: "Renamed action display name swim to swimmingMount."
+        });
+      }
+      if (!Object.hasOwn(actionNames, "swimmingMount")) {
+        actionNames["swimmingMount"] = "Swimming mount use";
+        addMigrationFallback(report, {
+          fromVersion: 6,
+          toVersion: 7,
+          path: "$.messages.actionNames.swimmingMount",
+          message: "Added the default swimming mount display name for Configuration Version 7."
+        });
+      }
+      if (actionNames["groundMount"] === "Non-flying riding") {
+        actionNames["groundMount"] = "Ground mount use";
+        addMigrationFallback(report, {
+          fromVersion: 6,
+          toVersion: 7,
+          path: "$.messages.actionNames.groundMount",
+          message: "Updated ground mount display name from Non-flying riding to Ground mount use."
+        });
+      }
+    }
+  };
 
   return [
     {
@@ -2052,7 +2149,8 @@ function currentMigrationRegistry(): MigrationDefinition[] {
         migrateV3ToV4(candidate);
         migrateV4ToV5(candidate);
         migrateV5ToV6(candidate, []);
-        candidate.version = 6;
+        migrateV6ToV7(candidate, []);
+        candidate.version = 7;
         const validation = validateConfig(candidate);
         if (!validation.valid) throw new Error(validation.errors.join("\n"));
       },
@@ -2068,7 +2166,8 @@ function currentMigrationRegistry(): MigrationDefinition[] {
         migrateV3ToV4(candidate);
         migrateV4ToV5(candidate);
         migrateV5ToV6(candidate, []);
-        candidate.version = 6;
+        migrateV6ToV7(candidate, []);
+        candidate.version = 7;
         const validation = validateConfig(candidate);
         if (!validation.valid) throw new Error(validation.errors.join("\n"));
       },
@@ -2082,7 +2181,8 @@ function currentMigrationRegistry(): MigrationDefinition[] {
         migrateV3ToV4(candidate);
         migrateV4ToV5(candidate);
         migrateV5ToV6(candidate, []);
-        candidate.version = 6;
+        migrateV6ToV7(candidate, []);
+        candidate.version = 7;
         const validation = validateConfig(candidate);
         if (!validation.valid) throw new Error(validation.errors.join("\n"));
       },
@@ -2095,7 +2195,8 @@ function currentMigrationRegistry(): MigrationDefinition[] {
         const candidate = clone(document);
         migrateV4ToV5(candidate);
         migrateV5ToV6(candidate, []);
-        candidate.version = 6;
+        migrateV6ToV7(candidate, []);
+        candidate.version = 7;
         const validation = validateConfig(candidate);
         if (!validation.valid) throw new Error(validation.errors.join("\n"));
       },
@@ -2106,7 +2207,8 @@ function currentMigrationRegistry(): MigrationDefinition[] {
       validate(document) {
         const candidate = clone(document) as unknown as JsonObject;
         migrateV5ToV6(candidate, []);
-        candidate.version = 6;
+        migrateV6ToV7(candidate, []);
+        candidate.version = 7;
         const validation = validateConfig(candidate);
         if (!validation.valid) throw new Error(validation.errors.join("\n"));
       },
@@ -2116,6 +2218,19 @@ function currentMigrationRegistry(): MigrationDefinition[] {
     },
     {
       version: 6,
+      validate(document) {
+        const candidate = clone(document) as unknown as JsonObject;
+        migrateV6ToV7(candidate, []);
+        candidate.version = 7;
+        const validation = validateConfig(candidate);
+        if (!validation.valid) throw new Error(validation.errors.join("\n"));
+      },
+      migrateToNext(document, report) {
+        migrateV6ToV7(document, report);
+      }
+    },
+    {
+      version: 7,
       validate(document) {
         const validation = validateConfig(document);
         if (!validation.valid) throw new Error(validation.errors.join("\n"));
