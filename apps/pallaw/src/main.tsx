@@ -7,6 +7,7 @@ import { App } from "./ui/App";
 const root = document.querySelector<HTMLElement>("#app");
 if (!root) throw new Error("PalLaw application root is missing.");
 
+root.replaceChildren();
 const persistence = createLocalDraftAdapter(window.localStorage, "pallaw.studio.v1");
 const editorDocument = createPalLawDocument(persistence);
 render(() => <App editorDocument={editorDocument} />, root);

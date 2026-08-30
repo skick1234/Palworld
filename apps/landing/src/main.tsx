@@ -4,4 +4,5 @@ import { App } from "./App";
 const root = document.querySelector<HTMLElement>("#app");
 if (!root) throw new Error("Landing application root is missing.");
 
+root.replaceChildren();
 render(() => <App />, root);
