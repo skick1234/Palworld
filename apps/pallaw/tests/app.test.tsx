@@ -156,7 +156,7 @@ describe("PalLaw application", () => {
   test("deletes an in-use mode with the replacement selected in the Solid dialog", async () => {
     const editorDocument = createPalLawDocument(createMemoryDraftAdapter());
     render(() => <App editorDocument={editorDocument} createMap={() => ({ update: vi.fn(), dispatch: vi.fn(), dispose: vi.fn() })} />);
-    await fireEvent.click(screen.getByRole("button", { name: "Modes" }));
+    await fireEvent.click(screen.getByRole("button", { name: /^Modes/ }));
     await fireEvent.click(screen.getByRole("button", { name: "Delete PvE" }));
     const replacement = screen.getByLabelText("Replacement mode");
     await fireEvent.change(replacement, { target: { value: "pvp" } });

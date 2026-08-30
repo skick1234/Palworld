@@ -117,7 +117,6 @@ export function RegionSidebar(props: RegionSidebarProps) {
           </footer>
         </article>
       )}</For>
-      <Show when={visible().length === 0}><div class="empty-state"><div><strong>No matching regions</strong><span>Clear the search to show every region.</span></div></div></Show>
     </div>
   </>;
 }
@@ -156,7 +155,6 @@ function ModeSidebar(props: ModeSidebarProps) {
           </footer>
         </article>
       )}</For>
-      <Show when={visible().length === 0}><div class="empty-state"><div><strong>No matching modes</strong><span>Clear the search to show every mode.</span></div></div></Show>
     </div>
   </>;
 }
@@ -190,7 +188,6 @@ function ScheduleSidebar(props: {
         <CardDetail parts={[schedule.mode ? "Mode window" : "Announcements only", `${schedule.announcements.length} notice${schedule.announcements.length === 1 ? "" : "s"}`, `${schedule.days.length} days`, `${computerTime(schedule)} local`]} />
         <footer class="sidebar-card-footer"><div class="order-controls"><button type="button" class="sidebar-card-icon order-button" aria-label={`Move ${schedule.name} earlier`} disabled={index() === 0} onClick={(event) => { event.stopPropagation(); props.onMove(index(), -1); }}><Icon name="arrow-up" /></button><button type="button" class="sidebar-card-icon order-button" aria-label={`Move ${schedule.name} later`} disabled={index() === props.schedules.length - 1} onClick={(event) => { event.stopPropagation(); props.onMove(index(), 1); }}><Icon name="arrow-down" /></button></div><div class="sidebar-card-actions"><button type="button" class="sidebar-card-icon" aria-label={`Duplicate ${schedule.name}`} onClick={(event) => { event.stopPropagation(); props.onDuplicate(index()); }}><Icon name="square-2-stack" /></button><button type="button" class="sidebar-card-icon danger" aria-label={`Delete ${schedule.name}`} onClick={(event) => { event.stopPropagation(); props.onDelete(index()); }}><Icon name="trash" /></button></div></footer>
       </article>}</For>
-      <Show when={props.schedules.length === 0}><div class="empty-state"><div><strong>No schedules yet</strong><span>Add a broadcast or a recurring mode window.</span></div></div></Show>
     </div>
   </>;
 }
