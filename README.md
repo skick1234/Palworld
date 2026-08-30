@@ -12,7 +12,7 @@ Pocketpair's current fan-content terms are available in its [Guidelines for Deri
 
 ## Static-site development
 
-The landing page, Legal notices, PalLaw Rules Studio, and PalOps operator guide are one multi-page SolidJS application built by a single TypeScript/Vite project. The separately self-hosted `apps/palops-dashboard/` package is not part of the GitHub Pages project. Run all static-site commands from this repository with Bun:
+The landing page, Legal notices, and PalLaw Rules Studio are one multi-page SolidJS application built by a single TypeScript/Vite project. Run all static-site commands from this repository with Bun:
 
 ```powershell
 bun install --frozen-lockfile
@@ -21,7 +21,7 @@ bun run test
 bun run build
 ```
 
-Page source lives under `apps/landing/`, `apps/legal/`, `apps/pallaw/`, and `apps/palops/`; shared Solid controls live under `apps/shared/`. PalLaw's deeper application source lives under `apps/pallaw/src/`:
+Page source lives under `apps/landing/`, `apps/legal/`, and `apps/pallaw/`; shared Solid controls live under `apps/shared/`. PalLaw's deeper application source lives under `apps/pallaw/src/`:
 
 - `domain/` parses, migrates, hydrates, validates, evaluates, and serializes the public configuration contract without DOM, storage, Solid, or Leaflet dependencies.
 - `document/` owns immutable snapshots, bounded undo/redo history, dirty state, import/export, validation, and draft persistence. Accepted commands publish and persist at most once.

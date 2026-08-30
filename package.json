@@ -6,7 +6,7 @@
   "scripts": {
     "typecheck": "bun x tsc --noEmit",
     "build": "bun x vite build",
-    "test": "bun x vitest run apps/landing/tests apps/legal/tests apps/pallaw/tests apps/palops/tests apps/shared/tests"
+    "test": "bun x vitest run apps/landing/tests apps/legal/tests apps/pallaw/tests apps/shared/tests"
   },
   "dependencies": {
     "solid-js": "^1.9.14"

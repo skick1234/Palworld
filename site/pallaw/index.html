@@ -1,28 +1,79 @@
 <!doctype html>
 <html lang="en">
-
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Create, validate, and export named PalLaw regions and player messages.">
+  <meta name="description" content="Create, validate, and export named PalLaw regions and player messages in your browser.">
   <meta name="color-scheme" content="dark light">
   <meta name="theme-color" content="#0b0d0e">
+  <link rel="canonical" href="https://palworld.skick.xyz/pallaw/">
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg">
+  <link rel="alternate icon" href="../favicon.svg">
+  <link rel="apple-touch-icon" href="../favicon.svg">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://palworld.skick.xyz/pallaw/">
   <meta property="og:title" content="PalLaw Rules Studio">
   <meta property="og:description" content="Build and validate regional Palworld server rules in your browser.">
+  <meta property="og:image" content="https://palworld.skick.xyz/assets/pallaw-terrain-hero.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="PalLaw Rules Studio">
+  <meta name="twitter:description" content="Build and validate regional Palworld server rules in your browser.">
+  <meta name="twitter:image" content="https://palworld.skick.xyz/assets/pallaw-terrain-hero.jpg">
   <meta http-equiv="Content-Security-Policy"
     content="default-src 'self' blob: data:; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' blob: data: https://cdn.jsdelivr.net; font-src https://fonts.gstatic.com; connect-src 'none'; frame-src https://ko-fi.com; object-src 'none'; base-uri 'self'; form-action 'none'">
   <title>PalLaw Rules Studio</title>
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
   <link rel="stylesheet" href="../shared/theme.css">
   <link rel="stylesheet" href="../build/pallaw.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "PalLaw Rules Studio",
+    "applicationCategory": "DesignApplication",
+    "operatingSystem": "Web Browser",
+    "url": "https://palworld.skick.xyz/pallaw/",
+    "description": "Visual browser-based polygon editor and validator for PalLaw regional combat rules and zones on dedicated Palworld servers.",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    },
+    "publisher": {
+      "@type": "Person",
+      "name": "Skick",
+      "url": "https://github.com/skick1234"
+    }
+  }
+  </script>
 </head>
-
 <body>
-  <div id="app"></div>
+  <div id="app">
+    <header class="studio-header">
+      <a class="wordmark" href="../">Palworld <b>/ PalLaw Rules Studio</b></a>
+      <nav>
+        <a href="../">Home</a>
+        <a href="../legal/">Legal</a>
+        <a href="https://github.com/skick1234/Palworld">GitHub</a>
+        <a href="https://discord.gg/zzhK54aaYz">Discord</a>
+      </nav>
+    </header>
+    <main class="studio-fallback">
+      <h1>PalLaw Rules Studio</h1>
+      <p>Visual map editor and JSON validator for regional Palworld server combat rules.</p>
+      <section>
+        <h2>Visual Region Authoring</h2>
+        <p>Draw polygon zones on the interactive Palworld map to mark safe zones, PvP combat areas, and custom stage locations.</p>
+        <h2>Schema Validation & Offline Export</h2>
+        <p>All rules are validated in real-time against the PalLaw configuration schema. Export clean, copy-ready <code>PalLaw.json</code> directly to your game server directory.</p>
+        <h2>Local and Private</h2>
+        <p>Rules Studio runs 100% inside your browser. No server uploads or telemetry.</p>
+      </section>
+    </main>
+  </div>
 
   <script src="vendor/leaflet/leaflet.js"></script>
   <script src="vendor/leaflet-editable/Leaflet.Editable.js"></script>
   <script type="module" src="../build/pallaw.js"></script>
 </body>
-
 </html>

@@ -7,7 +7,6 @@ on:
       - "apps/landing/**"
       - "apps/legal/**"
       - "apps/pallaw/**"
-      - "apps/palops/**"
       - "apps/shared/**"
       - "package.json"
       - "bun.lock"

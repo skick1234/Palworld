@@ -15,8 +15,7 @@ export default defineConfig(({ mode }) => ({
       input: {
         landing: resolve(root, "apps/landing/src/main.tsx"),
         legal: resolve(root, "apps/legal/src/main.tsx"),
-        pallaw: resolve(root, "apps/pallaw/src/main.tsx"),
-        palops: resolve(root, "apps/palops/src/main.tsx")
+        pallaw: resolve(root, "apps/pallaw/src/main.tsx")
       },
       output: {
         entryFileNames: "[name].js",

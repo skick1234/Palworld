@@ -10,6 +10,8 @@ describe("legal application", () => {
 
     expect(screen.getByRole("heading", { name: "Unofficial fan-made project." })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Map imagery" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Privacy policy" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "About the maintainer" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Legal" }).getAttribute("aria-current")).toBe("page");
   });
 });

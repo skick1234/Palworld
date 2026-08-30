@@ -1,0 +1,58 @@
+# Palworld Mods Comprehensive Reference
+
+> Unofficial tools and server platforms for dedicated Palworld servers.
+
+## Introduction
+Palworld Mods is maintained by Skick (https://github.com/skick1234). The project develops server-side mods and web tooling for community Palworld server operators.
+
+All software is strictly fan-made and unofficial. It is not affiliated with, endorsed by, sponsored by, or approved by Pocketpair, Inc.
+
+---
+
+## 1. PalLaw (Offline Standalone Regional Laws Mod)
+
+### Summary
+PalLaw is a free, standalone C++ UE4SS mod designed to restrict combat to specific map regions. It enforces rules authoritatively on dedicated servers.
+
+### Key Characteristics
+- **Offline and Local-First**: Configured strictly via a local `PalLaw.json` file in `PalServer/Pal/Binaries/Win64/Mods/PalLaw/PalLaw.json`.
+- **No Global PvP Override**: PalLaw does not force player damage on globally PvE servers. On PvP-enabled servers, it cancels incoming damage when either the attacker or victim is outside allowed combat zones.
+- **Visual Authoring**: Rules Studio (https://palworld.skick.xyz/pallaw/) allows operators to draw polygon regions on the official world map and export schema-validated JSON configurations entirely offline.
+- **Zero Telemetry**: Rules Studio sends no network requests, does not require an account, and does not upload your configuration to any server.
+
+### Installation
+1. Install UE4SS in `PalServer/Pal/Binaries/Win64/`.
+2. Place the packaged `PalLaw` directory into `PalServer/Pal/Binaries/Win64/Mods/PalLaw`.
+3. Ensure `enabled.txt`, `PalLaw.json`, and `dlls/main.dll` are present.
+
+---
+
+## 2. PalOrbit (Cloud Platform & SaaS)
+
+### Summary
+PalOrbit is a cloud-hosted SaaS platform paired with a native C++ UE4SS mod (`PalOrbit.dll`). It brings enterprise server management, Discord linking, and live telemetry to Palworld communities.
+
+### Key Features
+- **Cloud Zone Studio**: Web-based visual map and polygon editor to manage and publish immutable Law Revisions across connected community servers.
+- **Live Map Telemetry**: Real-time player locations, base camp boundaries, and online player tracking.
+- **Discord Cross-Chat Relay**: Bi-directional message relay between in-game global chat and designated Discord channels.
+- **Role-Based Privileges & Bypasses**: Dynamic role synchronization from Discord guild roles, allowing specific permissions, chat prefixes, and regional law bypasses.
+- **Starter Kit Claims**: Web-based starter kit configuration and fulfillment delivered idempotently to players in-game.
+- **Secure Cloud Bridge**: The mod establishes an outbound encrypted TLS connection to the PalOrbit Cloud Gateway using a bearer Server API Token (`po_live_...`). No incoming ports need to be forwarded or exposed to the public internet.
+
+---
+
+## 3. Web Hub & Architecture Guarantees
+
+### Privacy and Telemetry
+- The website `https://palworld.skick.xyz/` uses a strict Content Security Policy (`connect-src 'none'`, `script-src 'self'`).
+- No Google Analytics, advertising trackers, third-party cookies, or telemetry scripts are present.
+- UI preferences (light/dark theme) and local draft configurations are stored exclusively in the browser's `localStorage`.
+
+### Links & Resources
+- Web Hub: https://palworld.skick.xyz/
+- PalLaw Rules Studio: https://palworld.skick.xyz/pallaw/
+- PalOrbit Platform: https://palorbit.app
+- GitHub Repository: https://github.com/skick1234/Palworld
+- Discord Server: https://discord.gg/zzhK54aaYz
+- Legal & Notices: https://palworld.skick.xyz/legal/
