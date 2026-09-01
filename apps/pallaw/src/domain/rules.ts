@@ -1,4 +1,4 @@
-export const CONFIG_VERSION = 8;
+export const CONFIG_VERSION = 7;
 export const CONFIG_FILE_NAME = "PalLaw.json";
 export const SCHEMA_FILE_NAME = "PalLaw.schema.json";
 
@@ -74,7 +74,6 @@ export const ACTORS = [
 export const ACTIONS = [
   { id: "build", label: "Build", description: "Place structures and build objects." },
   { id: "dismantle", label: "Dismantle", description: "Dismantle structures and map objects." },
-  { id: "capture", label: "Pal capture", description: "Throw Pal Spheres and capture wild Pals or NPCs." },
   { id: "groundMount", label: "Ground mounts", description: "Begin or remain mounted on a ground Pal." },
   { id: "flyingMount", label: "Flying mounts", description: "Begin or remain mounted on a flying Pal." },
   { id: "swimmingMount", label: "Swimming mounts", description: "Begin or remain mounted on a swimming Pal." },
@@ -142,7 +141,6 @@ function isFastTravelPolicy(actionId: string, value: unknown): value is ActionVa
 export const DEFAULT_ACTION_NAMES = Object.freeze({
   build: "Building",
   dismantle: "Dismantling",
-  capture: "Pal capture",
   groundMount: "Ground mount use",
   flyingMount: "Flying mount use",
   swimmingMount: "Swimming mount use",
@@ -236,8 +234,6 @@ export const DEFAULT_SETTINGS = Object.freeze({
   adminBypass: true,
   playerSweepSeconds: 0.25,
   mountGraceSeconds: 15,
-  refundDeniedSpheres: false,
-  disableCaptureAim: false,
   debugLogging: false
 });
 
@@ -252,8 +248,6 @@ export const NEUTRAL_SETTINGS = Object.freeze({
   adminBypass: false,
   playerSweepSeconds: 0,
   mountGraceSeconds: 0,
-  refundDeniedSpheres: false,
-  disableCaptureAim: false,
   debugLogging: false
 });
 
@@ -359,7 +353,7 @@ function createStarterMode({ id, name, color }: ModeDescriptor): ModeValue {
     name,
     color,
     minimumLevel: null,
-    actions: modeActions(id),
+    actions: modeActions(),
     combat: modeCombat(id),
     messages: {}
   };
@@ -674,12 +668,9 @@ export function hydrateConfig(value: unknown): PalLawConfigValue {
   return markHydrated(config);
 }
 
-export function modeActions(modeId?: string): Record<string, ActionValue | undefined> {
+export function modeActions(): Record<string, ActionValue | undefined> {
   return Object.fromEntries(
-    ACTIONS.map((action) => {
-      if (action.id === "capture" && modeId === "safe") return [action.id, false];
-      return [action.id, action.fastTravelPolicy ? "all" : true];
-    })
+    ACTIONS.map((action) => [action.id, action.fastTravelPolicy ? "all" : true])
   ) as Record<string, ActionValue | undefined>;
 }
 
@@ -1289,7 +1280,7 @@ function validateRawConfig(input: unknown, errors: ErrorSink): void {
     const allowed = new Set(Object.keys(DEFAULT_SETTINGS));
     if (rejectUnknownKeys(input.settings, allowed, "settings", errors)) {
       const settings = input.settings;
-      for (const key of ["hotReload", "worldRules", "adminBypass", "refundDeniedSpheres", "disableCaptureAim", "debugLogging"]) {
+      for (const key of ["hotReload", "worldRules", "adminBypass", "debugLogging"]) {
         if (Object.hasOwn(settings, key) && typeof settings[key] !== "boolean") errors.push(`settings.${key} must be true or false.`);
       }
       const validateNumber = (key: string, minimum: number, maximum: number) => {
@@ -1543,8 +1534,6 @@ function compactSettings(settings: RuntimeSettingsValue): JsonRecord {
     ...(settings.worldRules ? { worldRules: true } : {}),
     ...(settings.adminBypass ? { adminBypass: true } : {}),
     ...(settings.mountGraceSeconds !== 0 ? { mountGraceSeconds: settings.mountGraceSeconds } : {}),
-    ...(settings.refundDeniedSpheres ? { refundDeniedSpheres: true } : {}),
-    ...(settings.disableCaptureAim ? { disableCaptureAim: true } : {}),
     ...(settings.debugLogging ? { debugLogging: true } : {})
   };
 }
@@ -2157,38 +2146,6 @@ function currentMigrationRegistry(): MigrationDefinition[] {
     }
   };
 
-  const migrateV7ToV8 = (document: JsonObject, report: MigrationReportEntry[]) => {
-    if (Array.isArray(document.modes)) {
-      document.modes.forEach((mode, index) => {
-        if (!isPlainObject(mode) || !isPlainObject(mode.actions)) return;
-        if (!Object.hasOwn(mode.actions, "capture")) {
-          const modeId = typeof mode.id === "string" ? mode.id : "";
-          const captureValue = modeId === "safe" ? false : true;
-          mode.actions["capture"] = captureValue;
-          addMigrationFallback(report, {
-            fromVersion: 7,
-            toVersion: 8,
-            path: `$.modes[${index}].actions.capture`,
-            message: `Version 7 had no capture action; defaulted capture to ${captureValue ? "true" : "false in safe mode"}. Set capture explicitly to change capture permission.`
-          });
-        }
-      });
-    }
-    const messages = isPlainObject(document.messages) ? document.messages : null;
-    const actionNames = messages && isPlainObject(messages.actionNames) ? messages.actionNames : null;
-    if (actionNames) {
-      if (!Object.hasOwn(actionNames, "capture")) {
-        actionNames["capture"] = "Pal capture";
-        addMigrationFallback(report, {
-          fromVersion: 7,
-          toVersion: 8,
-          path: "$.messages.actionNames.capture",
-          message: "Added the default Pal capture display name for Configuration Version 8."
-        });
-      }
-    }
-  };
-
   return [
     {
       version: 1,
@@ -2206,8 +2163,7 @@ function currentMigrationRegistry(): MigrationDefinition[] {
         migrateV4ToV5(candidate);
         migrateV5ToV6(candidate, []);
         migrateV6ToV7(candidate, []);
-        migrateV7ToV8(candidate, []);
-        candidate.version = 8;
+        candidate.version = 7;
         const validation = validateConfig(candidate);
         if (!validation.valid) throw new Error(validation.errors.join("\n"));
       },
@@ -2224,8 +2180,7 @@ function currentMigrationRegistry(): MigrationDefinition[] {
         migrateV4ToV5(candidate);
         migrateV5ToV6(candidate, []);
         migrateV6ToV7(candidate, []);
-        migrateV7ToV8(candidate, []);
-        candidate.version = 8;
+        candidate.version = 7;
         const validation = validateConfig(candidate);
         if (!validation.valid) throw new Error(validation.errors.join("\n"));
       },
@@ -2240,8 +2195,7 @@ function currentMigrationRegistry(): MigrationDefinition[] {
         migrateV4ToV5(candidate);
         migrateV5ToV6(candidate, []);
         migrateV6ToV7(candidate, []);
-        migrateV7ToV8(candidate, []);
-        candidate.version = 8;
+        candidate.version = 7;
         const validation = validateConfig(candidate);
         if (!validation.valid) throw new Error(validation.errors.join("\n"));
       },
@@ -2255,8 +2209,7 @@ function currentMigrationRegistry(): MigrationDefinition[] {
         migrateV4ToV5(candidate);
         migrateV5ToV6(candidate, []);
         migrateV6ToV7(candidate, []);
-        migrateV7ToV8(candidate, []);
-        candidate.version = 8;
+        candidate.version = 7;
         const validation = validateConfig(candidate);
         if (!validation.valid) throw new Error(validation.errors.join("\n"));
       },
@@ -2268,8 +2221,7 @@ function currentMigrationRegistry(): MigrationDefinition[] {
         const candidate = clone(document) as unknown as JsonObject;
         migrateV5ToV6(candidate, []);
         migrateV6ToV7(candidate, []);
-        migrateV7ToV8(candidate, []);
-        candidate.version = 8;
+        candidate.version = 7;
         const validation = validateConfig(candidate);
         if (!validation.valid) throw new Error(validation.errors.join("\n"));
       },
@@ -2282,8 +2234,7 @@ function currentMigrationRegistry(): MigrationDefinition[] {
       validate(document) {
         const candidate = clone(document) as unknown as JsonObject;
         migrateV6ToV7(candidate, []);
-        migrateV7ToV8(candidate, []);
-        candidate.version = 8;
+        candidate.version = 7;
         const validation = validateConfig(candidate);
         if (!validation.valid) throw new Error(validation.errors.join("\n"));
       },
@@ -2293,19 +2244,6 @@ function currentMigrationRegistry(): MigrationDefinition[] {
     },
     {
       version: 7,
-      validate(document) {
-        const candidate = clone(document) as unknown as JsonObject;
-        migrateV7ToV8(candidate, []);
-        candidate.version = 8;
-        const validation = validateConfig(candidate);
-        if (!validation.valid) throw new Error(validation.errors.join("\n"));
-      },
-      migrateToNext(document, report) {
-        migrateV7ToV8(document, report);
-      }
-    },
-    {
-      version: 8,
       validate(document) {
         const validation = validateConfig(document);
         if (!validation.valid) throw new Error(validation.errors.join("\n"));

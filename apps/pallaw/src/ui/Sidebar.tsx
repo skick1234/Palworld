@@ -260,7 +260,7 @@ export function Sidebar(props: { readonly state: SidebarState; readonly actions:
     <Show when={props.state.section === "schedules"}><ScheduleSidebar schedules={props.state.config.schedules} selectedIndex={props.state.selectedScheduleIndex} onSelect={props.actions.selectSchedule} onAdd={props.actions.addSchedule} onMove={props.actions.moveSchedule} onDuplicate={props.actions.duplicateSchedule} onDelete={props.actions.deleteSchedule} /></Show>
     <Show when={props.state.section === "messages"}><MessageSidebar messages={props.state.messages} selectedId={props.state.selectedMessageId} onSelect={props.actions.selectMessage} /></Show>
     <Show when={props.state.section === "settings"}>
-      <div class="panel-heading"><div><h2>Settings</h2><p>Safe defaults are supplied; most servers only need regions and modes.</p></div></div>
+      <div class="panel-heading"><div><h2>Runtime settings</h2><p>Safe defaults are supplied; most servers only need regions and modes.</p></div></div>
       <div class="list-stack">
         <div class="sidebar-card"><CardHeader title="Hot reload"><span classList={{ badge: true, pve: props.state.config.settings.hotReload }}>{props.state.config.settings.hotReload ? "On" : "Off"}</span></CardHeader><CardDetail parts={[`Every ${props.state.config.settings.hotReloadSeconds}s`]} /></div>
         <div class="sidebar-card"><CardHeader title="Regional combat authority"><span classList={{ badge: true, pve: props.state.config.regionalCombat.enabled }}>{props.state.config.regionalCombat.enabled ? "On" : "Off"}</span></CardHeader><CardDetail parts={[props.state.config.regionalCombat.enabled ? "PalLaw manages regional final damage and regional PvP" : "All combat remains vanilla"]} /></div>

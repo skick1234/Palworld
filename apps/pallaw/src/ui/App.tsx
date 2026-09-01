@@ -251,7 +251,7 @@ export function App(props: AppProps) {
   window.addEventListener("beforeunload", beforeUnload);
   onCleanup(() => { document.removeEventListener("keydown", keyboard); window.removeEventListener("beforeunload", beforeUnload); mapController?.dispose(); model.dispose(); });
 
-  const sections: readonly [EditorSection, string][] = [["regions", "Regions"], ["modes", "Modes"], ["schedules", "Schedules"], ["messages", "Messages"], ["settings", "Settings"], ["json", "Raw JSON"]];
+  const sections: readonly [EditorSection, string][] = [["regions", "Regions"], ["modes", "Modes"], ["schedules", "Schedules"], ["messages", "Messages"], ["settings", "Runtime"], ["json", "Raw JSON"]];
   const workspaceView = () => model.state.workspaceView;
   const selectedEvent = () => MESSAGE_EVENTS.find((event) => event.id === selectedMessage()) ?? MESSAGE_EVENTS[0]!;
   const selectedArea = () => area();

@@ -1,6 +1,6 @@
 {
   "$schema": "./PalLaw.schema.json",
-  "version": 8,
+  "version": 7,
   "regionalCombat": {
     "enabled": true
   },
@@ -17,7 +17,6 @@
     "actionNames": {
       "build": "Xây dựng",
       "dismantle": "Dismantling",
-      "capture": "Pal capture",
       "groundMount": "Ground mount use",
       "flyingMount": "Bay",
       "swimmingMount": "Swimming mount use",
@@ -149,7 +148,6 @@
       "actions": {
         "build": true,
         "dismantle": true,
-        "capture": false,
         "groundMount": true,
         "flyingMount": true,
         "swimmingMount": true,
@@ -231,7 +229,6 @@
       "actions": {
         "build": true,
         "dismantle": true,
-        "capture": true,
         "groundMount": true,
         "flyingMount": true,
         "swimmingMount": true,
@@ -313,7 +310,6 @@
       "actions": {
         "build": true,
         "dismantle": true,
-        "capture": true,
         "groundMount": true,
         "flyingMount": true,
         "swimmingMount": true,

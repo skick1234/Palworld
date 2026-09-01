@@ -42,9 +42,9 @@ export type Actor =
   "player" | "partnerPal" | "basePal" | "baseStructure" | "wildPal" | "npc" | "structure" | "environment";
 export type Point = [number, number];
 
-export interface PalLawConfigurationVersion8 {
+export interface PalLawConfigurationVersion6 {
   $schema?: string;
-  version: 8;
+  version: 6;
   regionalCombat?: RegionalCombat;
   settings: Settings;
   messages?: GlobalMessages;
@@ -76,8 +76,6 @@ export interface Settings {
   adminBypass?: boolean;
   playerSweepSeconds: number;
   mountGraceSeconds?: number;
-  refundDeniedSpheres?: boolean;
-  disableCaptureAim?: boolean;
   debugLogging?: boolean;
 }
 export interface GlobalMessages {
@@ -114,10 +112,8 @@ export interface ScheduleOutput {
 export interface ActionNames {
   build?: DisplayName;
   dismantle?: DisplayName;
-  capture?: DisplayName;
-  groundMount?: DisplayName;
-  flyingMount?: DisplayName;
-  swimmingMount?: DisplayName;
+  ride?: DisplayName;
+  fly?: DisplayName;
   editSign?: DisplayName;
   editLock?: DisplayName;
   decay?: DisplayName;
@@ -142,10 +138,8 @@ export interface ModeDefinition {
 export interface Actions {
   build?: boolean;
   dismantle?: boolean;
-  capture?: boolean;
-  groundMount?: boolean;
-  flyingMount?: boolean;
-  swimmingMount?: boolean;
+  ride?: boolean;
+  fly?: boolean;
   editSign?: boolean;
   editLock?: boolean;
   decay?: boolean;

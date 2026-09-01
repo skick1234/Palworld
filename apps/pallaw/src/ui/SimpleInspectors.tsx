@@ -8,8 +8,6 @@ export interface RuntimeSettings {
   readonly adminBypass: boolean;
   readonly playerSweepSeconds: number;
   readonly mountGraceSeconds: number;
-  readonly refundDeniedSpheres: boolean;
-  readonly disableCaptureAim: boolean;
   readonly debugLogging: boolean;
 }
 
@@ -34,8 +32,6 @@ const DEFINITIONS: readonly SettingDefinition[] = [
   { group: "Enforcement", scope: "regionalCombat", id: "enabled", label: "Regional combat authority", description: "Let PalLaw manage regional final damage and the player-damage setting.", type: "boolean" },
   { group: "Enforcement", scope: "settings", id: "worldRules", label: "World action rules", description: "Enforce actions, decay, mounts, fast travel, and level restrictions.", type: "boolean" },
   { group: "Enforcement", scope: "settings", id: "adminBypass", label: "Administrator bypass", description: "Allow administrators to bypass action and level restrictions.", type: "boolean" },
-  { group: "Enforcement", scope: "settings", id: "refundDeniedSpheres", label: "Refund denied capture spheres", description: "Authoritatively return a consumed Pal Sphere to the player's inventory when capture is denied.", type: "boolean" },
-  { group: "Enforcement", scope: "settings", id: "disableCaptureAim", label: "Disable capture aim in denied zones", description: "Suppress weapon aiming input while inside a region where Pal capture is denied.", type: "boolean" },
   { group: "Player tracking", scope: "settings", id: "playerSweepSeconds", label: "Player sweep interval", description: "Seconds between location, region, mount, and level checks.", type: "number", min: 0.05, max: 10, step: 0.05 },
   { group: "Player tracking", scope: "settings", id: "mountGraceSeconds", label: "Mount denial grace period", description: "Safe-dismount seconds for a player already mounted when riding becomes denied.", type: "number", min: 0, max: 120, step: 0.5 },
   { group: "Diagnostics", scope: "settings", id: "debugLogging", label: "Debug logging", description: "Write verbose rule decisions and missing reflected symbols to the UE4SS log.", type: "boolean" }

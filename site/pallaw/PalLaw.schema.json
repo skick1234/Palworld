@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "PalLaw.schema.json",
-  "title": "PalLaw Configuration Version 8",
+  "title": "PalLaw Configuration Version 7",
   "type": "object",
   "additionalProperties": false,
   "required": ["version", "settings", "modes", "wilderness", "stageAreas"],
   "properties": {
     "$schema": { "type": "string" },
-    "version": { "const": 8 },
+    "version": { "const": 7 },
     "regionalCombat": { "$ref": "#/$defs/regionalCombat" },
     "settings": { "$ref": "#/$defs/settings" },
     "messages": { "$ref": "#/$defs/globalMessages" },
@@ -60,8 +60,6 @@
         "adminBypass": { "type": "boolean", "description": "Omission disables the admin bypass." },
         "playerSweepSeconds": { "type": "number", "minimum": 0.05, "maximum": 10 },
         "mountGraceSeconds": { "type": "number", "minimum": 0, "maximum": 120, "description": "Omission uses zero seconds." },
-        "refundDeniedSpheres": { "type": "boolean", "description": "Omission disables sphere refunds upon capture denial." },
-        "disableCaptureAim": { "type": "boolean", "description": "Omission disables aim input suppression in capture-denied areas." },
         "debugLogging": { "type": "boolean", "description": "Omission disables debug logging." }
       },
       "allOf": [
@@ -191,7 +189,6 @@
       "properties": {
         "build": { "$ref": "#/$defs/actionDisplayName" },
         "dismantle": { "$ref": "#/$defs/actionDisplayName" },
-        "capture": { "$ref": "#/$defs/actionDisplayName" },
         "groundMount": { "$ref": "#/$defs/actionDisplayName" },
         "flyingMount": { "$ref": "#/$defs/actionDisplayName" },
         "swimmingMount": { "$ref": "#/$defs/actionDisplayName" },
@@ -224,7 +221,6 @@
       "properties": {
         "build": { "type": "boolean" },
         "dismantle": { "type": "boolean" },
-        "capture": { "type": "boolean" },
         "groundMount": { "type": "boolean" },
         "flyingMount": { "type": "boolean" },
         "swimmingMount": { "type": "boolean" },
@@ -251,7 +247,7 @@
     },
     "modeActions": {
       "allOf": [{ "$ref": "#/$defs/actions" }],
-      "required": ["build", "dismantle", "capture", "groundMount", "flyingMount", "swimmingMount", "editSign", "editLock", "decay", "fastTravelDeparture", "fastTravelArrival", "fastTravelCrossRegionsDeparture", "fastTravelCrossRegionsArrival"]
+      "required": ["build", "dismantle", "groundMount", "flyingMount", "swimmingMount", "editSign", "editLock", "decay", "fastTravelDeparture", "fastTravelArrival", "fastTravelCrossRegionsDeparture", "fastTravelCrossRegionsArrival"]
     },
     "targetRow": {
       "type": "object",
