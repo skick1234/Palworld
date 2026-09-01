@@ -53,7 +53,7 @@ export function App() {
         </article>
 
         <article class="product-feature product-ops product-orbit">
-          <figure class="ops-visual"><img src="assets/palops-operations-atmosphere.webp" alt="A dark topographic field connected by cloud signals" width="1536" height="1024" loading="lazy" /></figure>
+          <figure class="ops-visual"><img src="assets/palorbit-operations-atmosphere.webp" alt="A dark topographic field connected by cloud signals" width="1536" height="1024" loading="lazy" /></figure>
           <div class="product-copy">
             <p class="product-name">PalOrbit</p><h3>Cloud operations and live telemetry.</h3>
             <p>Manage regional laws from a Cloud Zone Studio, inspect real-time player telemetry, relay chat bi-directionally to Discord, and automate starter kit fulfillment.</p>

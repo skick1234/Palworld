@@ -81,6 +81,7 @@ export interface RuntimeSettingsValue {
   adminBypass: boolean;
   playerSweepSeconds: number;
   mountGraceSeconds: number;
+  refundDeniedSpheres: boolean;
   debugLogging: boolean;
 }
 

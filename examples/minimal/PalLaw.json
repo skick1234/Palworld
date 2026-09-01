@@ -1,6 +1,6 @@
 {
   "$schema": "./PalLaw.schema.json",
-  "version": 7,
+  "version": 8,
   "settings": {
     "playerSweepSeconds": 0.25,
     "hotReload": true,
@@ -14,6 +14,7 @@
     "actionNames": {
       "build": "Building",
       "dismantle": "Dismantling",
+      "capture": "Pal capture",
       "groundMount": "Ground mount use",
       "flyingMount": "Flying mount use",
       "swimmingMount": "Swimming mount use",
@@ -90,6 +91,7 @@
       "actions": {
         "build": true,
         "dismantle": true,
+        "capture": true,
         "groundMount": true,
         "flyingMount": true,
         "swimmingMount": true,

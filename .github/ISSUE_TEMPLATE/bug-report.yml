@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a reproducible problem with PalLaw, PalOps, or the public website.
+description: Report a reproducible problem with PalLaw, PalOrbit, or the public website.
 title: "[Bug]: "
 body:
   - type: markdown
@@ -16,7 +16,7 @@ body:
       description: Choose the mod or public tool where the problem appears.
       options:
         - PalLaw
-        - PalOps
+        - PalOrbit
         - Public website
         - Other
     validations:
@@ -42,7 +42,7 @@ body:
     id: product-version
     attributes:
       label: Product version
-      description: Use the PalLaw or PalOps release version, a commit when built from source, or "Current website."
+      description: Use the PalLaw or PalOrbit release version, a commit when built from source, or "Current website."
       placeholder: "Example: 0.3.0, commit 1a2b3c4, or Current website"
     validations:
       required: true

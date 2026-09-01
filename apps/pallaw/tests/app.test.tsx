@@ -16,7 +16,7 @@ describe("PalLaw application", () => {
 
     expect(screen.getByText(/Not affiliated with Pocketpair/)).toBeTruthy();
     expect(screen.getByLabelText("Area map").hasAttribute("hidden")).toBe(false);
-    await fireEvent.click(screen.getByRole("button", { name: "Runtime" }));
+    await fireEvent.click(screen.getByRole("button", { name: "Settings" }));
     const hotReload = screen.getByRole("checkbox", { name: "Hot reload" });
     await fireEvent.click(hotReload);
 

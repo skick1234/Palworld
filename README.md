@@ -31,7 +31,7 @@ Page source lives under `apps/landing/`, `apps/legal/`, and `apps/pallaw/`; shar
 
 One Vite build writes deterministic page entries, shared chunks, and PalLaw CSS to the ignored `site/build/` directory. Never commit that directory. The production budgets are 160 kB for all generated JavaScript and 60 kB for PalLaw CSS, excluding vendored Leaflet and map imagery; `tests/public-web/verify-site.mjs` builds, reports gzip sizes, and enforces these limits.
 
-GitHub Pages installs, type-checks, tests, and runs the single Vite build with pinned stable Bun 1.3.14, then uploads only `site/`. Keep `bun.lock` readable by that version; do not regenerate it with a newer canary lockfile format. Every tracked page retains `script-src 'self'` and `connect-src 'none'`; do not add inline executable scripts, runtime configuration requests, telemetry, or unapproved remote hosts. Theme and Donate behavior are shared Solid components, and the Ko-fi iframe is created only after user interaction.
+GitHub Pages installs, type-checks, tests, and runs the single Vite build with pinned stable Bun 1.4.0, then uploads only `site/`. Keep `bun.lock` readable by that version; do not regenerate it with a newer canary lockfile format. Every tracked page retains `script-src 'self'` and `connect-src 'none'`; do not add inline executable scripts, runtime configuration requests, telemetry, or unapproved remote hosts. Theme and Donate behavior are shared Solid components, and the Ko-fi iframe is created only after user interaction.
 
 The Pages workflow stamps every local CSS and JavaScript asset link with one `Date.now()` publish timestamp immediately before validation and build. Keep cache-busting under `tools/stamp-site-cache.mjs`; do not edit individual `?v=` values by hand.
 
