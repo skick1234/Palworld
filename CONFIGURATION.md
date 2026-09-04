@@ -80,7 +80,7 @@ Each region supports:
   "minimumLevel": 20,
   "map": "world",
   "polygon": [[0, 0], [100, 0], [100, 100]],
-  "combat": { "player": { "player": false } }
+  "combat": { "player": { "player": 0 } }
 }
 ```
 
@@ -132,7 +132,7 @@ Schedules and announcement rows have no delivery identity or deduplication. Dupl
 - a `#RRGGBB` color;
 - an optional `minimumLevel` containing `null` or an integer from 1 to 999; `null` and omission both mean no mode-level constraint;
 - every Player Action value, including Fast Travel Departure, Arrival, and cross-area endpoint permissions;
-- every source and target cell in the dense binary combat matrix;
+- every source and target damage multiplier in the dense combat matrix;
 - optional sparse message overrides.
 
 Rules Studio owns the new-document starter definitions named Safe, PvE, and
@@ -207,7 +207,7 @@ Editing or switching a mode never removes an area override.
 
 ## Combat overrides
 
-Area combat uses the same nested source-to-target boolean syntax as a mode, but
+Area combat uses the same nested source-to-target multiplier syntax as a mode, but
 it is sparse. Each present cell replaces that mode cell. An omitted row or cell
 inherits from the selected mode. Rules Studio presents the effective matrix and
 removes the explicit cell when it is set to **Default**.
@@ -221,9 +221,9 @@ damage.
 
 ```json
 "combat": {
-  "player": { "wildPal": true, "npc": false },
-  "partnerPal": { "wildPal": true },
-  "npc": { "player": false }
+  "player": { "wildPal": 1, "npc": 0 },
+  "partnerPal": { "wildPal": 0.5 },
+  "npc": { "player": 0 }
 }
 ```
 
@@ -248,12 +248,14 @@ of `structure`. Without that builder identity, a known map object uses
 `environment` even when base, group, catalog, or collection metadata is
 present. PalLaw does not maintain a separate ownership database.
 
-Each matrix-controlled relationship contains one binary decision:
+Each matrix-controlled relationship contains one damage multiplier, a number
+from `0` to `10`:
 
-- `true` enables targeting and preserves normal Palworld damage.
-- `false` prevents targeting and damage.
+- `0` prevents targeting and cancels damage.
+- `1` enables targeting and preserves normal Palworld damage.
+- Any other value enables targeting and multiplies the final damage.
 
-The Version 2 contract rejects `damage` multipliers. When a Version 1 file is migrated, `damage <= 0` becomes `allow: false` and `damage > 0` becomes `allow: true`; the migration report records every converted entry and the immutable source backup preserves the original value.
+Versions 2 through 8 stored `true` and `false` instead. When a Version 1 file is migrated, `damage <= 0` becomes deny and `damage > 0` becomes allow; Version 1 percentages never become multipliers. The v8-to-v9 migration turns `false` into `0` and `true` into `1`, and the migration report records one entry per converted combat object. The immutable source backup preserves the original values.
 
 Relationships are directed. Configure both cells explicitly when the same
 decision should apply in both directions. Selector arrays and `bidirectional`
@@ -403,6 +405,10 @@ departure and arrival gates. Every Mode declares both permissions; an Area may
 override either one sparsely, and omission inherits the selected Mode. The
 v5-to-v6 migration defaults both new endpoint permissions to allow and adds
 their display names when the global action-name object is present.
+
+Configuration Version 9 turns every combat cell into a damage multiplier from
+`0` to `10`. The v8-to-v9 migration maps `false` to `0` and `true` to `1` in
+every Mode matrix and every Area override so existing behavior is unchanged.
 
 Rules Studio and the DLL migrate every released older Configuration Version forward through each adjacent version. The declared source and every intermediate result must validate before the migrated document can be used. A document without `version` is reported and treated as version 1 only when it passes the complete version-1 contract. Invalid, unknown, and newer versions are rejected; reverse migration is not supported.
 

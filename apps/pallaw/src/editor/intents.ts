@@ -1,5 +1,6 @@
 export type ActionIntentValue = boolean | "all" | "baseOnly" | "baseToAll" | "baseToBase" | "allToBase" | "none";
-export type CombatIntentValue = "default" | "allow" | "deny";
+/** Damage multiplier 0..MAX_DAMAGE_MULTIPLIER; null clears an area override so it inherits the mode. */
+export type CombatIntentValue = number | null;
 
 export type MessageIntent =
   | { readonly type: "set-messages-enabled"; readonly value: boolean }

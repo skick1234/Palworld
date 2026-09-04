@@ -14,7 +14,7 @@ export interface AreaEditorValue {
   readonly minimumLevel?: number | null;
   readonly polygon?: readonly (readonly [number, number])[];
   readonly actions: ActionValues;
-  readonly combat: Readonly<Record<string, Readonly<Record<string, boolean | undefined>>>>;
+  readonly combat: Readonly<Record<string, Readonly<Record<string, number | undefined>>>>;
   readonly messages?: Readonly<Record<string, unknown>>;
 }
 
@@ -93,7 +93,7 @@ export function AreaEditor(props: {
       <div class="rules-stack">
         <Show when={props.regionalCombatEnabled === false}><p class="help combat-inactive">Combat rules are saved but currently inactive. Level and world-action rules remain enabled.</p></Show>
         <div class="section-card rules-actions"><div class="section-card-header"><div><h3>Player actions</h3><p>Control building, dismantling, mounts, and other regional actions.</p></div></div><div class="section-card-body"><ActionsEditor actions={props.area.actions} effective={props.effectiveActions} isMode={false} onChange={(actionId, value) => { props.onChange({ type: "set-action", actionId, value }); }} /></div></div>
-        <div class="section-card combat-matrix-card"><div class="section-card-header"><div><h3>Combat matrix</h3><p>Choose Default, Allow, or Deny for every combat relationship.</p></div><button type="button" class="button small ghost" disabled={Object.keys(props.area.combat).length === 0} onClick={() => { props.onChange({ type: "reset-combat" }); }}>Reset overrides</button></div><div class="section-card-body"><CombatMatrix matrix={props.effectiveCombat} isMode={false} modeName={props.modeName} overrideFor={props.overrideFor} onChange={(source, target, value) => { props.onChange({ type: "set-combat", source, target, value }); }} /></div></div>
+        <div class="section-card combat-matrix-card"><div class="section-card-header"><div><h3>Combat matrix</h3><p>Choose Default, Allow (1×), Deny (0×), or a custom damage multiplier for every combat relationship.</p></div><button type="button" class="button small ghost" disabled={Object.keys(props.area.combat).length === 0} onClick={() => { props.onChange({ type: "reset-combat" }); }}>Reset overrides</button></div><div class="section-card-body"><CombatMatrix matrix={props.effectiveCombat} isMode={false} modeName={props.modeName} overrideFor={props.overrideFor} onChange={(source, target, value) => { props.onChange({ type: "set-combat", source, target, value }); }} /></div></div>
       </div>
     </Show>
     <Show when={tab() === "messages"}><MessageInspector messages={props.messages} resolved={props.resolvedMessages} areaName={props.area.name} modeName={props.modeName} overrides={props.area.messages} onChange={(intent) => { props.onChange({ type: "message", intent }); }} /></Show>

@@ -1,5 +1,5 @@
 import { For, Show, createSignal } from "solid-js";
-import { ACTIONS, ACTORS, fastTravelPolicies } from "../domain/rules";
+import { ACTIONS, ACTORS, MAX_DAMAGE_MULTIPLIER, fastTravelPolicies } from "../domain/rules";
 
 export type ActionValue = boolean | "all" | "baseOnly" | "baseToAll" | "baseToBase" | "allToBase" | "none";
 export type ActionValues = Readonly<Record<string, ActionValue | undefined>>;
@@ -59,8 +59,14 @@ export function ActionsEditor(props: {
   </>;
 }
 
-export type CombatMatrixValue = Readonly<Record<string, Readonly<Record<string, boolean | undefined>> | undefined>>;
-export type CombatOverride = "default" | "allow" | "deny";
+/** Damage multipliers per source and target: 0 denies, 1 keeps vanilla damage, anything else scales it. */
+export type CombatMatrixValue = Readonly<Record<string, Readonly<Record<string, number | undefined>> | undefined>>;
+/** Explicit area cell multiplier, or null when the cell inherits the mode default. */
+export type CombatOverride = number | null;
+
+function multiplierLabel(value: number): string {
+  return value === 0 ? "Deny" : value === 1 ? "Allow" : `${value}×`;
+}
 
 interface MatrixActorDefinition {
   readonly name: string;
@@ -85,7 +91,17 @@ export function CombatMatrix(props: {
     target: { name: "Columns", text: "receive damage. Hover or focus a column header or matrix button to inspect the target." }
   };
   const [description, setDescription] = createSignal<MatrixRelationshipDescription>(defaultDescription);
-  const next = (value: CombatOverride): CombatOverride => value === "default" ? "allow" : value === "allow" ? "deny" : "default";
+  const [selected, setSelected] = createSignal<{ source: typeof ACTORS[number]; target: typeof ACTORS[number] } | null>(null);
+  const effectiveOf = (source: string, target: string) => props.matrix[source]?.[target] ?? 0;
+  const rawOf = (source: string, target: string): CombatOverride => props.isMode ? effectiveOf(source, target) : props.overrideFor(source, target);
+  // Area cells cycle Default -> Allow (1) -> Deny (0) -> Default; mode cells toggle 1 <-> 0.
+  const next = (raw: CombatOverride, effective: number): CombatOverride => props.isMode ? (effective === 0 ? 1 : 0) : raw === null ? 1 : raw === 1 ? 0 : null;
+  const applyMultiplier = (source: string, target: string, text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) { if (!props.isMode) props.onChange(source, target, null); return; }
+    const value = Number(trimmed);
+    if (Number.isFinite(value) && value >= 0 && value <= MAX_DAMAGE_MULTIPLIER) props.onChange(source, target, value);
+  };
   const definition = (actor: { label: string; description?: string }): MatrixActorDefinition => ({ name: actor.label, text: actor.description ?? actor.label });
   const describeSource = (source: { label: string; description?: string }) => { setDescription({ source: definition(source), target: defaultDescription.target }); };
   const describeTarget = (target: { label: string; description?: string }) => { setDescription({ source: defaultDescription.source, target: definition(target) }); };
@@ -102,14 +118,17 @@ export function CombatMatrix(props: {
       </tr></thead>
       <tbody><For each={sources}>{(source, row) => <tr><th scope="row"><span class="matrix-actor-label" tabindex="0" aria-label={`${source.label}. ${source.description}`} onMouseEnter={() => { describeSource(source); }} onFocus={() => { describeSource(source); }}>{source.matrixLabel ?? source.label}</span></th>
         <For each={ACTORS}>{(target, column) => {
-          const effective = () => props.matrix[source.id]?.[target.id] === true;
-          const raw = () => props.isMode ? (effective() ? "allow" : "deny") : props.overrideFor(source.id, target.id);
-          const primary = () => !props.isMode && raw() === "default" ? "Default" : effective() ? "Allow" : "Deny";
-          const accessible = () => `${source.label} to ${target.label}: ${raw() === "default" ? `Default, effective ${effective() ? "Allow" : "Deny"}` : `${effective() ? "Allow" : "Deny"} override`}. Activate to change.`;
-          return <td><button type="button" classList={{ "matrix-cell": true, allowed: effective(), denied: !effective(), "is-default": props.isMode || raw() === "default", "is-override": !props.isMode && raw() !== "default" }} aria-label={accessible()} data-combat-row={row()} data-combat-column={column()} onMouseEnter={() => { describeRelationship(source, target); }} onFocus={() => { describeRelationship(source, target); }} onClick={() => { props.onChange(source.id, target.id, props.isMode ? (effective() ? "deny" : "allow") : next(raw())); }}><span class="matrix-cell-primary">{primary()}</span>{!props.isMode && <span class="matrix-cell-secondary">{raw() === "default" ? (effective() ? "Allow" : "Deny") : "Override"}</span>}</button></td>;
+          const effective = () => effectiveOf(source.id, target.id);
+          const raw = () => rawOf(source.id, target.id);
+          const primary = () => raw() === null ? "Default" : multiplierLabel(effective());
+          const accessible = () => `${source.label} to ${target.label}: ${raw() === null ? `Default, effective ${effective()}×` : props.isMode ? `${effective()}×` : `${effective()}× override`}. Activate to change.`;
+          return <td><button type="button" classList={{ "matrix-cell": true, allowed: effective() === 1, denied: effective() === 0, scaled: effective() !== 0 && effective() !== 1, "is-default": raw() === null, "is-override": !props.isMode && raw() !== null }} aria-label={accessible()} data-combat-row={row()} data-combat-column={column()} onMouseEnter={() => { describeRelationship(source, target); }} onFocus={() => { describeRelationship(source, target); setSelected({ source, target }); }} onClick={() => { setSelected({ source, target }); props.onChange(source.id, target.id, next(raw(), effective())); }}><span class="matrix-cell-primary">{primary()}</span>{!props.isMode && <span class="matrix-cell-secondary">{raw() === null ? multiplierLabel(effective()) : "Override"}</span>}</button></td>;
         }}</For>
       </tr>}</For></tbody>
     </table></div>
-    <div class="matrix-actor-description"><div class="matrix-definition-list"><strong>{description().source.name}</strong><span>{description().source.text}</span><Show when={description().target}>{(target) => <><strong>{target().name}</strong><span>{target().text}</span></>}</Show></div></div>
+    <div class="matrix-actor-description">
+      <div class="matrix-definition-list"><strong>{description().source.name}</strong><span>{description().source.text}</span><Show when={description().target}>{(target) => <><strong>{target().name}</strong><span>{target().text}</span></>}</Show></div>
+      <Show when={selected()}>{(cell) => <label class="matrix-multiplier"><span>Damage multiplier</span><input type="number" min="0" max={MAX_DAMAGE_MULTIPLIER} step="0.05" aria-label={`${cell().source.label} to ${cell().target.label} damage multiplier`} placeholder={props.isMode ? undefined : `Default ${effectiveOf(cell().source.id, cell().target.id)}`} value={rawOf(cell().source.id, cell().target.id) ?? ""} onChange={(event) => { applyMultiplier(cell().source.id, cell().target.id, event.currentTarget.value); }} /><small>{cell().source.label} to {cell().target.label}. 0 cancels damage, 1 keeps vanilla damage.{props.isMode ? "" : " Clear the field to use the mode default."}</small></label>}</Show>
+    </div>
   </>;
 }

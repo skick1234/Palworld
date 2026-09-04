@@ -1,5 +1,4 @@
 export type ActionValue = boolean | "all" | "baseOnly" | "baseToAll" | "baseToBase" | "allToBase" | "none";
-export type CombatOverride = "default" | "allow" | "deny";
 export type Point = [number, number];
 
 export interface AlertMessage {
@@ -28,7 +27,8 @@ export interface AreaValue {
   mode: string;
   schedules: string[];
   actions: Record<string, ActionValue | undefined>;
-  combat: Record<string, Record<string, boolean | undefined>>;
+  /** Sparse damage multipliers (0 cancels, 1 vanilla); omitted cells inherit the mode. */
+  combat: Record<string, Record<string, number | undefined>>;
   messages: Record<string, EventMessage>;
   _modeDefinition?: ModeValue;
 }
@@ -70,7 +70,8 @@ export interface ModeValue {
   color: string;
   minimumLevel: number | null;
   actions: Record<string, ActionValue | undefined>;
-  combat: Record<string, Record<string, boolean | undefined>>;
+  /** Dense damage multipliers (0 cancels, 1 vanilla) for every source and target. */
+  combat: Record<string, Record<string, number | undefined>>;
   messages: Record<string, EventMessage>;
 }
 

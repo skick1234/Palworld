@@ -16,7 +16,7 @@ describe("ActionsEditor", () => {
 
 describe("CombatMatrix", () => {
   test("updates actor definitions when a matrix cell is hovered", async () => {
-    render(() => <CombatMatrix matrix={{ player: { partnerPal: true } }} isMode={true} overrideFor={() => "allow"} onChange={vi.fn()} />);
+    render(() => <CombatMatrix matrix={{ player: { partnerPal: 1 } }} isMode={true} overrideFor={() => 1} onChange={vi.fn()} />);
 
     await fireEvent.mouseEnter(screen.getByRole("button", { name: /Player to Partner Pal/ }));
 
@@ -29,7 +29,7 @@ describe("CombatMatrix", () => {
   });
 
   test("shows a same-actor relationship definition only once", async () => {
-    render(() => <CombatMatrix matrix={{ player: { player: true } }} isMode={true} overrideFor={() => "allow"} onChange={vi.fn()} />);
+    render(() => <CombatMatrix matrix={{ player: { player: 1 } }} isMode={true} overrideFor={() => 1} onChange={vi.fn()} />);
 
     await fireEvent.mouseEnter(screen.getByRole("button", { name: /^Player to Player:/ }));
 
@@ -38,5 +38,52 @@ describe("CombatMatrix", () => {
     const definitions = [...description!.querySelectorAll(".matrix-definition-list > span")].map((element) => element.textContent);
     expect(labels).toEqual(["Player"]);
     expect(definitions).toEqual(["A player character."]);
+  });
+});
+
+describe("CombatMatrix multipliers", () => {
+  test("cycles an area cell Default, Allow, Deny, Default", async () => {
+    const change = vi.fn();
+    let override: number | null = null;
+    render(() => <CombatMatrix matrix={{ player: { wildPal: 1 } }} isMode={false} modeName="Safe" overrideFor={() => override} onChange={change} />);
+
+    await fireEvent.click(screen.getByRole("button", { name: /Player to Wild Pal: Default, effective 1×/ }));
+    expect(change).toHaveBeenLastCalledWith("player", "wildPal", 1);
+    override = 1;
+    await fireEvent.click(screen.getByRole("button", { name: /Player to Wild Pal/ }));
+    expect(change).toHaveBeenLastCalledWith("player", "wildPal", 0);
+    override = 0;
+    await fireEvent.click(screen.getByRole("button", { name: /Player to Wild Pal/ }));
+    expect(change).toHaveBeenLastCalledWith("player", "wildPal", null);
+  });
+
+  test("toggles a mode cell between 1 and 0", async () => {
+    const change = vi.fn();
+    render(() => <CombatMatrix matrix={{ player: { wildPal: 0.5 } }} isMode={true} overrideFor={() => 0.5} onChange={change} />);
+
+    const cell = screen.getByRole("button", { name: /Player to Wild Pal: 0.5×/ });
+    expect(cell.classList.contains("scaled")).toBe(true);
+    expect(cell.querySelector(".matrix-cell-primary")!.textContent).toBe("0.5×");
+    await fireEvent.click(cell);
+    expect(change).toHaveBeenCalledWith("player", "wildPal", 0);
+  });
+
+  test("writes a custom multiplier from the selected cell input and clears it back to default", async () => {
+    const change = vi.fn();
+    render(() => <CombatMatrix matrix={{ player: { wildPal: 0.5 } }} isMode={false} modeName="Safe" overrideFor={() => 0.5} onChange={change} />);
+
+    expect(screen.queryByLabelText("Player to Wild Pal damage multiplier")).toBeNull();
+    await fireEvent.focus(screen.getByRole("button", { name: /Player to Wild Pal: 0.5× override/ }));
+    const input = screen.getByLabelText("Player to Wild Pal damage multiplier") as HTMLInputElement;
+    expect(input.type).toBe("number");
+    expect(input.getAttribute("max")).toBe("10");
+    expect(input.value).toBe("0.5");
+
+    await fireEvent.change(input, { target: { value: "2.5" } });
+    expect(change).toHaveBeenLastCalledWith("player", "wildPal", 2.5);
+    await fireEvent.change(input, { target: { value: "11" } });
+    expect(change).toHaveBeenCalledTimes(1);
+    await fireEvent.change(input, { target: { value: "" } });
+    expect(change).toHaveBeenLastCalledWith("player", "wildPal", null);
   });
 });

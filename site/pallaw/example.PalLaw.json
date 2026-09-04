@@ -1,6 +1,6 @@
 {
   "$schema": "./PalLaw.schema.json",
-  "version": 8,
+  "version": 9,
   "regionalCombat": {
     "enabled": true
   },
@@ -159,9 +159,9 @@
         "fastTravelCrossRegionsArrival": true
       },
       "combat": {
-        "player": { "structure": false },
-        "partnerPal": { "environment": false },
-        "basePal": { "environment": false }
+        "player": { "structure": 0 },
+        "partnerPal": { "environment": 0 },
+        "basePal": { "environment": 0 }
       }
     }
   ],
@@ -208,64 +208,64 @@
       },
       "combat": {
         "player": {
-          "player": false,
-          "partnerPal": false,
-          "basePal": false,
-          "baseStructure": false,
-          "wildPal": false,
-          "npc": false,
-          "structure": true,
-          "environment": true
+          "player": 0,
+          "partnerPal": 0,
+          "basePal": 0,
+          "baseStructure": 0,
+          "wildPal": 0,
+          "npc": 0,
+          "structure": 1,
+          "environment": 1
         },
         "partnerPal": {
-          "player": false,
-          "partnerPal": false,
-          "basePal": false,
-          "baseStructure": false,
-          "wildPal": false,
-          "npc": false,
-          "structure": true,
-          "environment": true
+          "player": 0,
+          "partnerPal": 0,
+          "basePal": 0,
+          "baseStructure": 0,
+          "wildPal": 0,
+          "npc": 0,
+          "structure": 1,
+          "environment": 1
         },
         "basePal": {
-          "player": false,
-          "partnerPal": false,
-          "basePal": false,
-          "baseStructure": false,
-          "wildPal": false,
-          "npc": false,
-          "structure": true,
-          "environment": true
+          "player": 0,
+          "partnerPal": 0,
+          "basePal": 0,
+          "baseStructure": 0,
+          "wildPal": 0,
+          "npc": 0,
+          "structure": 1,
+          "environment": 1
         },
         "baseStructure": {
-          "player": false,
-          "partnerPal": false,
-          "basePal": false,
-          "baseStructure": false,
-          "wildPal": false,
-          "npc": false,
-          "structure": true,
-          "environment": true
+          "player": 0,
+          "partnerPal": 0,
+          "basePal": 0,
+          "baseStructure": 0,
+          "wildPal": 0,
+          "npc": 0,
+          "structure": 1,
+          "environment": 1
         },
         "wildPal": {
-          "player": false,
-          "partnerPal": false,
-          "basePal": false,
-          "baseStructure": true,
-          "wildPal": true,
-          "npc": true,
-          "structure": true,
-          "environment": true
+          "player": 0,
+          "partnerPal": 0,
+          "basePal": 0,
+          "baseStructure": 1,
+          "wildPal": 1,
+          "npc": 1,
+          "structure": 1,
+          "environment": 1
         },
         "npc": {
-          "player": false,
-          "partnerPal": false,
-          "basePal": false,
-          "baseStructure": true,
-          "wildPal": true,
-          "npc": true,
-          "structure": true,
-          "environment": true
+          "player": 0,
+          "partnerPal": 0,
+          "basePal": 0,
+          "baseStructure": 1,
+          "wildPal": 1,
+          "npc": 1,
+          "structure": 1,
+          "environment": 1
         }
       }
     },
@@ -291,64 +291,64 @@
       },
       "combat": {
         "player": {
-          "player": false,
-          "partnerPal": false,
-          "basePal": false,
-          "baseStructure": false,
-          "wildPal": true,
-          "npc": true,
-          "structure": true,
-          "environment": true
+          "player": 0,
+          "partnerPal": 0,
+          "basePal": 0,
+          "baseStructure": 0,
+          "wildPal": 1,
+          "npc": 1,
+          "structure": 1,
+          "environment": 1
         },
         "partnerPal": {
-          "player": false,
-          "partnerPal": false,
-          "basePal": false,
-          "baseStructure": false,
-          "wildPal": true,
-          "npc": true,
-          "structure": true,
-          "environment": true
+          "player": 0,
+          "partnerPal": 0,
+          "basePal": 0,
+          "baseStructure": 0,
+          "wildPal": 1,
+          "npc": 1,
+          "structure": 1,
+          "environment": 1
         },
         "basePal": {
-          "player": false,
-          "partnerPal": false,
-          "basePal": false,
-          "baseStructure": false,
-          "wildPal": true,
-          "npc": true,
-          "structure": true,
-          "environment": true
+          "player": 0,
+          "partnerPal": 0,
+          "basePal": 0,
+          "baseStructure": 0,
+          "wildPal": 1,
+          "npc": 1,
+          "structure": 1,
+          "environment": 1
         },
         "baseStructure": {
-          "player": false,
-          "partnerPal": false,
-          "basePal": false,
-          "baseStructure": false,
-          "wildPal": true,
-          "npc": true,
-          "structure": true,
-          "environment": true
+          "player": 0,
+          "partnerPal": 0,
+          "basePal": 0,
+          "baseStructure": 0,
+          "wildPal": 1,
+          "npc": 1,
+          "structure": 1,
+          "environment": 1
         },
         "wildPal": {
-          "player": true,
-          "partnerPal": true,
-          "basePal": true,
-          "baseStructure": true,
-          "wildPal": true,
-          "npc": true,
-          "structure": true,
-          "environment": true
+          "player": 1,
+          "partnerPal": 1,
+          "basePal": 1,
+          "baseStructure": 1,
+          "wildPal": 1,
+          "npc": 1,
+          "structure": 1,
+          "environment": 1
         },
         "npc": {
-          "player": true,
-          "partnerPal": true,
-          "basePal": true,
-          "baseStructure": true,
-          "wildPal": true,
-          "npc": true,
-          "structure": true,
-          "environment": true
+          "player": 1,
+          "partnerPal": 1,
+          "basePal": 1,
+          "baseStructure": 1,
+          "wildPal": 1,
+          "npc": 1,
+          "structure": 1,
+          "environment": 1
         }
       }
     },
@@ -374,64 +374,64 @@
       },
       "combat": {
         "player": {
-          "player": true,
-          "partnerPal": true,
-          "basePal": true,
-          "baseStructure": true,
-          "wildPal": true,
-          "npc": true,
-          "structure": true,
-          "environment": true
+          "player": 1,
+          "partnerPal": 1,
+          "basePal": 1,
+          "baseStructure": 1,
+          "wildPal": 1,
+          "npc": 1,
+          "structure": 1,
+          "environment": 1
         },
         "partnerPal": {
-          "player": true,
-          "partnerPal": true,
-          "basePal": true,
-          "baseStructure": true,
-          "wildPal": true,
-          "npc": true,
-          "structure": true,
-          "environment": true
+          "player": 1,
+          "partnerPal": 1,
+          "basePal": 1,
+          "baseStructure": 1,
+          "wildPal": 1,
+          "npc": 1,
+          "structure": 1,
+          "environment": 1
         },
         "basePal": {
-          "player": true,
-          "partnerPal": true,
-          "basePal": true,
-          "baseStructure": true,
-          "wildPal": true,
-          "npc": true,
-          "structure": true,
-          "environment": true
+          "player": 1,
+          "partnerPal": 1,
+          "basePal": 1,
+          "baseStructure": 1,
+          "wildPal": 1,
+          "npc": 1,
+          "structure": 1,
+          "environment": 1
         },
         "baseStructure": {
-          "player": true,
-          "partnerPal": true,
-          "basePal": true,
-          "baseStructure": true,
-          "wildPal": true,
-          "npc": true,
-          "structure": true,
-          "environment": true
+          "player": 1,
+          "partnerPal": 1,
+          "basePal": 1,
+          "baseStructure": 1,
+          "wildPal": 1,
+          "npc": 1,
+          "structure": 1,
+          "environment": 1
         },
         "wildPal": {
-          "player": true,
-          "partnerPal": true,
-          "basePal": true,
-          "baseStructure": true,
-          "wildPal": true,
-          "npc": true,
-          "structure": true,
-          "environment": true
+          "player": 1,
+          "partnerPal": 1,
+          "basePal": 1,
+          "baseStructure": 1,
+          "wildPal": 1,
+          "npc": 1,
+          "structure": 1,
+          "environment": 1
         },
         "npc": {
-          "player": true,
-          "partnerPal": true,
-          "basePal": true,
-          "baseStructure": true,
-          "wildPal": true,
-          "npc": true,
-          "structure": true,
-          "environment": true
+          "player": 1,
+          "partnerPal": 1,
+          "basePal": 1,
+          "baseStructure": 1,
+          "wildPal": 1,
+          "npc": 1,
+          "structure": 1,
+          "environment": 1
         }
       },
       "messages": {

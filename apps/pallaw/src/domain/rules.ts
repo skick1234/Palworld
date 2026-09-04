@@ -1,4 +1,6 @@
-export const CONFIG_VERSION = 8;
+export const CONFIG_VERSION = 9;
+// Combat cells are damage multipliers: 0 cancels damage, 1 keeps vanilla damage.
+export const MAX_DAMAGE_MULTIPLIER = 10;
 export const CONFIG_FILE_NAME = "PalLaw.json";
 export const SCHEMA_FILE_NAME = "PalLaw.schema.json";
 
@@ -15,14 +17,14 @@ import {
 } from "./configuration-migrations";
 import type { JsonObject, MigrationDefinition, MigrationReportEntry } from "./configuration-migrations";
 import type {
-  ActionValue, AlertMessage, AreaValue, CombatOverride, EventMessage, GlobalMessages,
+  ActionValue, AlertMessage, AreaValue, EventMessage, GlobalMessages,
   ModeValue, PalLawConfigValue, Point, RegionValue, RuntimeSettingsValue,
   ScheduleAnnouncementValue, ScheduleOutput, ScheduleValue
 } from "./types";
 import { ISO_MINUTE_TIME, WEEKDAYS, parseMinuteOfDay, scheduleDurationMinutes } from "./schedules";
 
 type JsonRecord = Record<string, unknown>;
-type CombatMatrix = Record<string, Record<string, boolean | undefined>>;
+type CombatMatrix = Record<string, Record<string, number | undefined>>;
 type ModeDescriptor = Pick<ModeValue, "id" | "name" | "color"> & Partial<ModeValue>;
 type ErrorSink = { push(...messages: unknown[]): number };
 interface Box { minX: number; maxX: number; minY: number; maxY: number; }
@@ -516,7 +518,7 @@ function normalizeCombat(value: unknown): AreaValue["combat"] {
   return Object.fromEntries(Object.entries(value).flatMap(([source, row]) => {
     if (!SOURCE_ACTOR_IDS.has(source) || !isPlainObject(row)) return [];
     const targets = Object.fromEntries(Object.entries(row)
-      .filter(([target, allowed]) => ACTOR_IDS.has(target) && typeof allowed === "boolean")) as Record<string, boolean | undefined>;
+      .filter(([target, multiplier]) => ACTOR_IDS.has(target) && typeof multiplier === "number")) as Record<string, number | undefined>;
     return Object.keys(targets).length ? [[source, targets]] : [];
   })) as AreaValue["combat"];
 }
@@ -603,7 +605,7 @@ function normalizeDenseCombat(value: unknown): CombatMatrix {
   return Object.fromEntries(ACTORS.filter((actor) => !actor.targetOnly).map((source) => [
     source.id,
     Object.fromEntries(ACTORS.map((target) => [
-      target.id, boolean((() => { const row = sourceValue[source.id]; return isPlainObject(row) ? row[target.id] : undefined; })(), false)
+      target.id, (() => { const row = sourceValue[source.id]; const cell = isPlainObject(row) ? row[target.id] : undefined; return typeof cell === "number" ? cell : 0; })()
     ]))
   ])) as CombatMatrix;
 }
@@ -695,28 +697,28 @@ export function modeCombat(mode: string): CombatMatrix {
   const matrix = Object.fromEntries(
     ACTORS.filter((actor) => !actor.targetOnly).map((source) => [
       source.id,
-      Object.fromEntries(ACTORS.map((target) => [target.id, true]))
+      Object.fromEntries(ACTORS.map((target) => [target.id, 1]))
     ])
   ) as CombatMatrix;
   const ownedSources = ["player", "partnerPal", "basePal", "baseStructure"];
   const ownedTargets = ["player", "partnerPal", "basePal", "baseStructure"];
   if (mode === "pve" || mode === "safe") {
     for (const source of ownedSources) {
-      for (const target of ownedTargets) matrix[source][target] = false;
+      for (const target of ownedTargets) matrix[source][target] = 0;
     }
   }
   if (mode === "safe") {
     for (const source of Object.keys(matrix)) {
       for (const target of ACTORS.map((actor) => actor.id)) {
         if (target === "structure" || target === "baseStructure" || target === "environment") continue;
-        if (ownedSources.includes(source) || ownedTargets.includes(target)) matrix[source][target] = false;
+        if (ownedSources.includes(source) || ownedTargets.includes(target)) matrix[source][target] = 0;
       }
     }
   }
   return matrix;
 }
 
-function resolveCombat(area: AreaValue): { preset: CombatMatrix; matrix: CombatMatrix; overridden: CombatMatrix } {
+function resolveCombat(area: AreaValue): { preset: CombatMatrix; matrix: CombatMatrix; overridden: Record<string, Record<string, boolean>> } {
   const preset = area?._modeDefinition?.combat || modeCombat(area?.mode || "pve");
   const matrix = Object.fromEntries(
     Object.entries(preset).map(([source, targets]) => [source, { ...targets }])
@@ -726,12 +728,12 @@ function resolveCombat(area: AreaValue): { preset: CombatMatrix; matrix: CombatM
       source,
       Object.fromEntries(Object.keys(targets).map((target) => [target, false]))
     ])
-  ) as CombatMatrix;
+  ) as Record<string, Record<string, boolean>>;
   for (const [source, row] of Object.entries(area?.combat || {})) {
     if (!matrix[source]) continue;
-    for (const [target, allowed] of Object.entries(row || {})) {
-      if (!Object.hasOwn(matrix[source], target) || typeof allowed !== "boolean") continue;
-      matrix[source][target] = allowed;
+    for (const [target, multiplier] of Object.entries(row || {})) {
+      if (!Object.hasOwn(matrix[source], target) || typeof multiplier !== "number") continue;
+      matrix[source][target] = multiplier;
       overridden[source][target] = true;
     }
   }
@@ -742,39 +744,39 @@ export function effectiveCombat(area: AreaValue): CombatMatrix {
   return resolveCombat(area).matrix;
 }
 
-export function quickCombatOverride(area: AreaValue, source: string, target: string): CombatOverride {
-  const resolution = resolveCombat(area);
-  if (!resolution.matrix[source] || !Object.hasOwn(resolution.matrix[source], target)) return "default";
-  if (!resolution.overridden[source][target]) return "default";
-  return resolution.matrix[source][target] ? "allow" : "deny";
+export function isDamageMultiplier(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= MAX_DAMAGE_MULTIPLIER;
 }
 
-export function setQuickCombatOverride(area: AreaValue, source: string, target: string, value: CombatOverride): void {
+/** Explicit area cell multiplier, or null when the cell inherits the mode default. */
+export function combatOverride(area: AreaValue, source: string, target: string): number | null {
+  const resolution = resolveCombat(area);
+  if (!resolution.matrix[source] || !Object.hasOwn(resolution.matrix[source], target)) return null;
+  if (!resolution.overridden[source][target]) return null;
+  return resolution.matrix[source][target] ?? null;
+}
+
+/** Writes an explicit area cell multiplier; null deletes the cell so it inherits the mode default. */
+export function setCombatOverride(area: AreaValue, source: string, target: string, value: number | null): void {
   if (!area || typeof area !== "object" || Array.isArray(area)) {
     throw new TypeError("A combat area is required.");
   }
-  if (!["default", "allow", "deny"].includes(value)) {
-    throw new TypeError("Quick combat override must be default, allow, or deny.");
+  if (value !== null && !isDamageMultiplier(value)) {
+    throw new TypeError(`Combat override must be null or a number between 0 and ${MAX_DAMAGE_MULTIPLIER}.`);
   }
   if (!SOURCE_ACTOR_IDS.has(source) || !ACTOR_IDS.has(target)) {
-    throw new TypeError("Quick combat override requires a known source and target actor.");
+    throw new TypeError("Combat override requires a known source and target actor.");
   }
 
-  const resolution = resolveCombat(area);
-  resolution.overridden[source][target] = value !== "default";
-  resolution.matrix[source][target] = value === "default"
-    ? resolution.preset[source][target]
-    : value === "allow";
-
   const combat = clone(area.combat || {});
-  if (value === "default") {
+  if (value === null) {
     if (combat[source]) {
       delete combat[source][target];
       if (!Object.keys(combat[source]).length) delete combat[source];
     }
   } else {
     combat[source] ||= {};
-    combat[source][target] = value === "allow";
+    combat[source][target] = value;
   }
   area.combat = combat;
 }
@@ -808,13 +810,13 @@ export function deriveFeatureSummary(input: unknown) {
   for (const area of areas) {
     const matrix = effectiveCombat(area);
     for (const [source, targets] of Object.entries(matrix)) {
-      for (const [target, allowed] of Object.entries(targets)) {
+      for (const [target, multiplier] of Object.entries(targets)) {
         if (target === "structure" || target === "baseStructure" || target === "environment") {
-          structurePolicyNonVanilla ||= !allowed;
+          structurePolicyNonVanilla ||= multiplier !== 1;
           continue;
         }
-        characterPolicyNonVanilla ||= !allowed;
-        enablesRegionalPlayerDamage ||= owned.has(source) && owned.has(target) && allowed === true;
+        characterPolicyNonVanilla ||= multiplier !== 1;
+        enablesRegionalPlayerDamage ||= owned.has(source) && owned.has(target) && (multiplier ?? 0) > 0;
       }
     }
     const actions = effectiveActions(area);
@@ -938,9 +940,10 @@ export function areaAt(config: PalLawConfigValue, point: Point, inStage = false)
 export function evaluateCombat(config: PalLawConfigValue, sourceKind: string, targetKind: string, targetPoint: Point) {
   const targetArea = areaAt(config, targetPoint);
   const targetMatrix = effectiveCombat(targetArea);
-  const allowed = targetMatrix[sourceKind]?.[targetKind] ?? false;
+  const multiplier = targetMatrix[sourceKind]?.[targetKind] ?? 0;
   return {
-    allowed,
+    allowed: multiplier > 0,
+    multiplier,
     targetArea
   };
 }
@@ -979,9 +982,9 @@ function validateCombat(entries: unknown, context: string, errors: ErrorSink): v
       errors.push(`${context}.${source} must be an object.`);
       continue;
     }
-    for (const [target, allowed] of Object.entries(row)) {
+    for (const [target, multiplier] of Object.entries(row)) {
       if (!ACTOR_IDS.has(target)) errors.push(`${context}.${source}.${target} is not a supported target actor.`);
-      if (typeof allowed !== "boolean") errors.push(`${context}.${source}.${target} must be true or false.`);
+      if (!isDamageMultiplier(multiplier)) errors.push(`${context}.${source}.${target} must be a number between 0 and ${MAX_DAMAGE_MULTIPLIER}.`);
     }
   }
 }
@@ -1168,8 +1171,8 @@ function validateRawCombat(value: unknown, context: string, errors: ErrorSink): 
     const rowContext = `${context}.${source}`;
     if (!rejectUnknownKeys(row, ACTOR_IDS, rowContext, errors)) continue;
     if (!Object.keys(row).length) errors.push(`${rowContext} must contain at least one override cell.`);
-    for (const [target, allowed] of Object.entries(row)) {
-      if (typeof allowed !== "boolean") errors.push(`${rowContext}.${target} must be true or false.`);
+    for (const [target, multiplier] of Object.entries(row)) {
+      if (!isDamageMultiplier(multiplier)) errors.push(`${rowContext}.${target} must be a number between 0 and ${MAX_DAMAGE_MULTIPLIER}.`);
     }
   }
 }
@@ -1252,7 +1255,7 @@ function validateRawMode(value: unknown, index: number, errors: ErrorSink): void
         if (!rejectUnknownKeys(value.combat[source], ACTOR_IDS, `${context}.combat.${source}`, errors)) continue;
         for (const target of ACTORS) {
           if (!Object.hasOwn(value.combat[source], target.id)) errors.push(`${context}.combat.${source}.${target.id} is required.`);
-          else if (typeof value.combat[source][target.id] !== "boolean") errors.push(`${context}.combat.${source}.${target.id} must be true or false.`);
+          else if (!isDamageMultiplier(value.combat[source][target.id])) errors.push(`${context}.combat.${source}.${target.id} must be a number between 0 and ${MAX_DAMAGE_MULTIPLIER}.`);
         }
       }
     }
@@ -1799,6 +1802,10 @@ function currentMigrationRegistry(): MigrationDefinition[] {
           ? localizedName
           : starter.name
       });
+      // Versions 3 through 8 store boolean cells; the v8->v9 step turns them into multipliers.
+      for (const row of Object.values(mode.combat)) {
+        for (const target of Object.keys(row)) (row as Record<string, unknown>)[target] = (row[target] ?? 0) > 0;
+      }
       if (starter.id === "pvp") {
         mode.messages.regionChanged = mergeWarning(
           effectiveGlobalRegion,
@@ -2184,6 +2191,33 @@ function currentMigrationRegistry(): MigrationDefinition[] {
     }
   };
 
+  // Version 9 turns every boolean combat cell into a damage multiplier: false -> 0, true -> 1.
+  const migrateV8ToV9 = (document: JsonObject, report: MigrationReportEntry[]) => {
+    const convertCombat = (owner: unknown, path: string) => {
+      if (!isPlainObject(owner) || !isPlainObject(owner.combat)) return;
+      let converted = false;
+      for (const row of Object.values(owner.combat)) {
+        if (!isPlainObject(row)) continue;
+        for (const [target, cell] of Object.entries(row)) {
+          if (typeof cell !== "boolean") continue;
+          row[target] = cell ? 1 : 0;
+          converted = true;
+        }
+      }
+      if (!converted) return;
+      addMigrationFallback(report, {
+        fromVersion: 8,
+        toVersion: 9,
+        path: `${path}.combat`,
+        message: "Version 9 combat cells are damage multipliers; deny (false) became 0 and allow (true) became 1 to preserve existing behavior."
+      });
+    };
+    if (Array.isArray(document.modes)) document.modes.forEach((mode, index) => { convertCombat(mode, `$.modes[${index}]`); });
+    convertCombat(document.wilderness, "$.wilderness");
+    convertCombat(document.stageAreas, "$.stageAreas");
+    if (Array.isArray(document.regions)) document.regions.forEach((region, index) => { convertCombat(region, `$.regions[${index}]`); });
+  };
+
   return [
     {
       version: 1,
@@ -2202,7 +2236,8 @@ function currentMigrationRegistry(): MigrationDefinition[] {
         migrateV5ToV6(candidate, []);
         migrateV6ToV7(candidate, []);
         migrateV7ToV8(candidate, []);
-        candidate.version = 8;
+        migrateV8ToV9(candidate, []);
+        candidate.version = 9;
         const validation = validateConfig(candidate);
         if (!validation.valid) throw new Error(validation.errors.join("\n"));
       },
@@ -2220,7 +2255,8 @@ function currentMigrationRegistry(): MigrationDefinition[] {
         migrateV5ToV6(candidate, []);
         migrateV6ToV7(candidate, []);
         migrateV7ToV8(candidate, []);
-        candidate.version = 8;
+        migrateV8ToV9(candidate, []);
+        candidate.version = 9;
         const validation = validateConfig(candidate);
         if (!validation.valid) throw new Error(validation.errors.join("\n"));
       },
@@ -2236,7 +2272,8 @@ function currentMigrationRegistry(): MigrationDefinition[] {
         migrateV5ToV6(candidate, []);
         migrateV6ToV7(candidate, []);
         migrateV7ToV8(candidate, []);
-        candidate.version = 8;
+        migrateV8ToV9(candidate, []);
+        candidate.version = 9;
         const validation = validateConfig(candidate);
         if (!validation.valid) throw new Error(validation.errors.join("\n"));
       },
@@ -2251,7 +2288,8 @@ function currentMigrationRegistry(): MigrationDefinition[] {
         migrateV5ToV6(candidate, []);
         migrateV6ToV7(candidate, []);
         migrateV7ToV8(candidate, []);
-        candidate.version = 8;
+        migrateV8ToV9(candidate, []);
+        candidate.version = 9;
         const validation = validateConfig(candidate);
         if (!validation.valid) throw new Error(validation.errors.join("\n"));
       },
@@ -2264,7 +2302,8 @@ function currentMigrationRegistry(): MigrationDefinition[] {
         migrateV5ToV6(candidate, []);
         migrateV6ToV7(candidate, []);
         migrateV7ToV8(candidate, []);
-        candidate.version = 8;
+        migrateV8ToV9(candidate, []);
+        candidate.version = 9;
         const validation = validateConfig(candidate);
         if (!validation.valid) throw new Error(validation.errors.join("\n"));
       },
@@ -2278,7 +2317,8 @@ function currentMigrationRegistry(): MigrationDefinition[] {
         const candidate = clone(document) as unknown as JsonObject;
         migrateV6ToV7(candidate, []);
         migrateV7ToV8(candidate, []);
-        candidate.version = 8;
+        migrateV8ToV9(candidate, []);
+        candidate.version = 9;
         const validation = validateConfig(candidate);
         if (!validation.valid) throw new Error(validation.errors.join("\n"));
       },
@@ -2291,7 +2331,8 @@ function currentMigrationRegistry(): MigrationDefinition[] {
       validate(document) {
         const candidate = clone(document) as unknown as JsonObject;
         migrateV7ToV8(candidate, []);
-        candidate.version = 8;
+        migrateV8ToV9(candidate, []);
+        candidate.version = 9;
         const validation = validateConfig(candidate);
         if (!validation.valid) throw new Error(validation.errors.join("\n"));
       },
@@ -2301,6 +2342,19 @@ function currentMigrationRegistry(): MigrationDefinition[] {
     },
     {
       version: 8,
+      validate(document) {
+        const candidate = clone(document) as unknown as JsonObject;
+        migrateV8ToV9(candidate, []);
+        candidate.version = 9;
+        const validation = validateConfig(candidate);
+        if (!validation.valid) throw new Error(validation.errors.join("\n"));
+      },
+      migrateToNext(document, report) {
+        migrateV8ToV9(document, report);
+      }
+    },
+    {
+      version: 9,
       validate(document) {
         const validation = validateConfig(document);
         if (!validation.valid) throw new Error(validation.errors.join("\n"));

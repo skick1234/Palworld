@@ -1,6 +1,6 @@
 import type { EditorDocument } from "../document/create-editor-document";
 import type { PalLawConfig } from "../document/create-pallaw-document";
-import { clone, resolveAreaMessages, setQuickCombatOverride } from "../domain/rules";
+import { clone, isDamageMultiplier, resolveAreaMessages, setCombatOverride } from "../domain/rules";
 import type { EventMessage, Point, RegionValue, ScheduleValue } from "../domain/types";
 import type { AreaIntent, MessageIntent, ModeIntent } from "./intents";
 import type { EditorModel } from "./create-editor-model";
@@ -102,7 +102,7 @@ export function createPalLawCommands(document: EditorDocument<PalLawConfig>, mod
         else if (intent.type === "set-action") {
           if (intent.value === null) delete target.actions[intent.actionId];
           else target.actions[intent.actionId] = intent.value;
-        } else if (intent.type === "set-combat") setQuickCombatOverride(target, intent.source, intent.target, intent.value);
+        } else if (intent.type === "set-combat") setCombatOverride(target, intent.source, intent.target, intent.value);
         else if (intent.type === "reset-combat") target.combat = {};
       });
     },
@@ -117,7 +117,10 @@ export function createPalLawCommands(document: EditorDocument<PalLawConfig>, mod
         else if (intent.type === "set-action") {
           if (intent.value === null) delete mode.actions[intent.actionId];
           else mode.actions[intent.actionId] = intent.value;
-        } else if (intent.type === "set-combat") mode.combat[intent.source]![intent.target] = intent.value === "allow";
+        } else if (intent.type === "set-combat") {
+          // Mode cells are dense, so null (inherit) is meaningless here and is ignored.
+          if (isDamageMultiplier(intent.value)) mode.combat[intent.source]![intent.target] = intent.value;
+        }
       });
     },
     changeSetting(scope, id, value) {

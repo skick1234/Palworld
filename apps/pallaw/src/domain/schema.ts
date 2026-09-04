@@ -42,9 +42,9 @@ export type Actor =
   "player" | "partnerPal" | "basePal" | "baseStructure" | "wildPal" | "npc" | "structure" | "environment";
 export type Point = [number, number];
 
-export interface PalLawConfigurationVersion8 {
+export interface PalLawConfigurationVersion9 {
   $schema?: string;
-  version: 8;
+  version: 9;
   regionalCombat?: RegionalCombat;
   settings: Settings;
   messages?: GlobalMessages;
@@ -162,14 +162,14 @@ export interface ModeCombat {
   npc: TargetRow;
 }
 export interface TargetRow {
-  player: boolean;
-  partnerPal: boolean;
-  basePal: boolean;
-  baseStructure: boolean;
-  wildPal: boolean;
-  npc: boolean;
-  structure: boolean;
-  environment: boolean;
+  player: number;
+  partnerPal: number;
+  basePal: number;
+  baseStructure: number;
+  wildPal: number;
+  npc: number;
+  structure: number;
+  environment: number;
 }
 export interface MessageOverrides {
   regionChanged?: MessageEvent;
@@ -193,14 +193,14 @@ export interface CombatOverrides {
   npc?: SparseTargetRow;
 }
 export interface SparseTargetRow {
-  player?: boolean;
-  partnerPal?: boolean;
-  basePal?: boolean;
-  baseStructure?: boolean;
-  wildPal?: boolean;
-  npc?: boolean;
-  structure?: boolean;
-  environment?: boolean;
+  player?: number;
+  partnerPal?: number;
+  basePal?: number;
+  baseStructure?: number;
+  wildPal?: number;
+  npc?: number;
+  structure?: number;
+  environment?: number;
 }
 export interface Region {
   name: DisplayName;
